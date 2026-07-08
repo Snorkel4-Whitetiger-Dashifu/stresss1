@@ -1,0 +1,164 @@
+{
+  "title": "Settlement Rollup — Diagnosis & Report Spec",
+  "version": "3.0",
+  "cli": {
+    "path": "/app/log_audit.py",
+    "subcommands": {
+      "diagnose": {
+        "usage": "python3 /app/log_audit.py diagnose --dossier PATH --report PATH",
+        "defaults": {
+          "dossier": "/app/incident/export_dossier.md",
+          "report": "/app/output/diagnosis.json"
+        },
+        "must_include_all_allowed_ids": true,
+        "must_not_include_repaired_keys": ["verified_summary", "output_paths"]
+      },
+      "repair": {
+        "usage": "python3 /app/log_audit.py repair --output-dir PATH",
+        "defaults": {
+          "output_dir": "/app/output"
+        }
+      }
+    }
+  },
+  "diagnosis_report": {
+    "required_keys_diagnosed": ["pipeline_status", "issues_found", "input_stats"],
+    "required_keys_repaired": [
+      "pipeline_status",
+      "issues_found",
+      "input_stats",
+      "verified_summary",
+      "output_paths"
+    ],
+    "pipeline_status_diagnosed": "diagnosed",
+    "pipeline_status_repaired": "repaired",
+    "issues_found_item": {
+      "required_fields": ["id", "severity", "description", "resolution", "evidence"],
+      "allowed_ids": [
+        "wrong_posted_field",
+        "priority_filter",
+        "recency_order",
+        "priority_normalization",
+        "dedupe_transaction",
+        "waived_filter"
+      ],
+      "evidence": {
+        "required_fields": ["dossier_quote", "pipeline_evidence", "repair_action"],
+        "pipeline_evidence_source": "/app/workflow/.export_report.original",
+        "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
+        "required_terms_by_issue": {
+          "wrong_posted_field": {
+            "dossier_quote": ["posted_at", "posted_ms"],
+            "pipeline_evidence": ["event[\"posted_at\"]"],
+            "repair_action": ["posted_ms"]
+          },
+          "priority_filter": {
+            "dossier_quote": ["risk", "critical"],
+            "pipeline_evidence": ["priority == \"critical\""],
+            "repair_action": ["risk"]
+          },
+          "recency_order": {
+            "dossier_quote": ["ascending", "descending"],
+            "pipeline_evidence": ["sort", "posted_ms"],
+            "repair_action": ["reverse=True"]
+          },
+          "priority_normalization": {
+            "dossier_quote": ["RISK", "lowercase"],
+            "pipeline_evidence": ["priority"],
+            "repair_action": [".lower("]
+          },
+          "dedupe_transaction": {
+            "dossier_quote": ["duplicate", "posted_ms"],
+            "pipeline_evidence": ["for event in events"],
+            "repair_action": ["dedupe"]
+          },
+          "waived_filter": {
+            "dossier_quote": ["waived", "excluded"],
+            "pipeline_evidence": ["escalations.append"],
+            "repair_action": ["waived"]
+          }
+        }
+      }
+    },
+    "input_stats": {
+      "required_fields": ["record_count", "unique_txn_ids", "merchants"],
+      "merchants_sort": "ascending alphabetical"
+    },
+    "verified_summary": {
+      "required_fields": [
+        "schema_version",
+        "raw_record_count",
+        "unique_txn_ids",
+        "total_records",
+        "priority_counts",
+        "merchants",
+        "escalated_count",
+        "waived_excluded_count"
+      ]
+    },
+    "output_paths": {
+      "summary_json": "<output-dir>/summary.json",
+      "flagged_jsonl": "<output-dir>/flagged.jsonl",
+      "service_matrix_json": "<output-dir>/service_matrix.json"
+    }
+  },
+  "repair_audit": {
+    "required_keys": [
+      "patched_workflow",
+      "processing_steps",
+      "removed_tokens",
+      "pre_repair",
+      "post_repair"
+    ],
+    "processing_steps": [
+      "normalize_priority",
+      "dedupe_txn_id",
+      "filter_waived",
+      "build_escalations"
+    ],
+    "patched_workflow": "/app/workflow/export_report.py",
+    "forbidden_tokens": ["event[\"posted_at\"]", "priority == \"critical\""],
+    "removed_tokens_schema": {
+      "required_keys": ["event[\"posted_at\"]", "priority == \"critical\""],
+      "value_type": "boolean"
+    },
+    "pre_repair": {
+      "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
+      "capture_order": "before any write to export_report.py",
+      "pipeline_tokens_present_schema": {
+        "required_keys": ["event[\"posted_at\"]", "priority == \"critical\""],
+        "value_type": "boolean"
+      }
+    },
+    "post_repair": {
+      "required_fields": ["escalated_count", "rerun_escalated_count"]
+    }
+  },
+  "workflow_repair": {
+    "path": "/app/workflow/export_report.py",
+    "cli_usage": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
+    "defaults": {
+      "input": "/app/data/events.json",
+      "output_dir": "/app/output"
+    },
+    "must_not_contain_after_repair": ["event[\"posted_at\"]", "priority == \"critical\""],
+    "must_contain_after_repair": ["posted_ms", "reverse=True", ".lower("]
+  },
+  "outputs": {
+    "summary_json": {
+      "schema_version": "settlement-rollup-v2",
+      "priority_counts_key_order": ["critical", "debug", "info", "risk"]
+    },
+    "service_matrix_json": {
+      "description": "Per-merchant priority counts from canonical deduped records.",
+      "merchant_sort": "ascending alphabetical",
+      "priority_key_order": ["critical", "debug", "info", "risk"]
+    },
+    "flagged_jsonl": {
+      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note"],
+      "sort": "posted_ms descending",
+      "priorities_included": ["risk", "critical"],
+      "exclude_waived": true
+    }
+  }
+}

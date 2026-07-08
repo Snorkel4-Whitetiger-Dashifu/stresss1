@@ -1,0 +1,5 @@
+The transaction settlement rollup is incorrect in `/app/workflow/export_report.py`. Source records are in `/app/data/events.json`, and expected report formats are defined in `/app/docs/report_spec.json`. Analyst notes live in `/app/incident/export_dossier.md`; use those notes as supporting context, but validate behavior from code and data.
+
+Implement `/app/log_audit.py` with two subcommands: `diagnose` and `repair`. `diagnose` must write a diagnosis report and include all required issue IDs with evidence tied to dossier excerpts and the frozen broken pipeline snapshot at `/app/workflow/.export_report.original`. `repair` must patch the live workflow in place, run the corrected pipeline, and write outputs under `--output-dir` (default `/app/output`): `summary.json`, `service_matrix.json`, `flagged.jsonl`, `diagnosis.json`, and `repair_audit.json`.
+
+The repaired pipeline must compute results from input records (not constants), support alternate `--input` and `--output-dir` paths, and keep the frozen snapshot file untouched. Follow `/app/docs/report_spec.json` exactly for required schema keys, issue IDs, evidence fields, and audit metadata.

@@ -1,0 +1,7 @@
+[
+  {"txn_id": "a1", "posted_ms": 50, "priority": "info", "merchant": "delta", "note": "ok", "waived": false},
+  {"txn_id": "a2", "posted_ms": 100, "priority": "risk", "merchant": "delta", "note": "slow settlement", "waived": false},
+  {"txn_id": "a2", "posted_ms": 120, "priority": "RISK", "merchant": "delta", "note": "slow duplicate", "waived": false},
+  {"txn_id": "a3", "posted_ms": 200, "priority": "critical", "merchant": "delta", "note": "waived critical", "waived": true},
+  {"txn_id": "a4", "posted_ms": 150, "priority": "Critical", "merchant": "delta", "note": "escalate", "waived": false}
+]
