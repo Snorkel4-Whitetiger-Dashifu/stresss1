@@ -31,8 +31,6 @@ Finance raised concern about delayed closeout rows. Engineering confirmed source
 Intermittent queue lag caused triage confusion. Reviewers asked for strict recency-first ordering in escalations.
 
 
-> **Incident note (2026-04-11 - #SET-4401)** Nadia: broken rollup reads event['posted_at'] instead of event['posted_ms'], so escalation timestamps collapse to zero in flagged output.
-
 ### Window 006 - acquirer gamma
 Responder shift reported inconsistent priority alias casing in inbound records. Follow-up requested normalization.
 
@@ -43,8 +41,6 @@ Settlement operator saw duplicate transaction identifiers across reprocessed bat
 Some high-severity rows were waived by analysts but still surfaced downstream. Export exclusion logic was questioned.
 
 ### Window 009 - acquirer gamma
-
-> **Incident note (2026-04-11 - #SET-4401)** Imran: escalation export keeps only priority == 'critical' rows, but on-call queue expects both risk and critical.
 
 Bridge participants flagged mismatch between on-call queue and exported flagged rows. Scope remained pipeline-side.
 
@@ -60,9 +56,6 @@ Triagers highlighted risk-level alerts missing from escalation exports. Manual r
 ### Window 013 - acquirer alpha
 A replay job introduced duplicate txn_id rows with newer timestamps. Team aligned on newest-record-wins semantics.
 
-> **Incident note (2026-04-12 - #SET-4401)** Marta: escalation rows are sorted ascending by posted_ms, but responder workflow requires descending recency.
-
-
 ### Window 014 - acquirer beta
 Escalation dashboard drifted from raw ledger feed. Root cause still pointed to export transformation defects.
 
@@ -75,9 +68,6 @@ Field mapping audit identified ambiguity between posted_at and posted_ms labels 
 ### Window 017 - acquirer beta
 Bridge transcripts captured repeated requests for deterministic output keys and stable schema ordering.
 
-
-> **Incident note (2026-04-13 - #SET-4410)** Nadia: source payloads include RISK and Critical aliases; rollup must normalize to lowercase before routing.
-
 ### Window 018 - acquirer gamma
 Ops manager requested no hardcoded counters in summary outputs. Metrics must be computed from input rows.
 
@@ -89,13 +79,10 @@ Service owners warned against patching snapshot artifacts. Snapshot remains evid
 
 ### Window 021 - acquirer gamma
 
-> **Incident note (2026-04-13 - #SET-4410)** Imran: duplicate txn_id rows must collapse to the record with highest posted_ms before aggregation.
-
 Ledger replay produced out-of-order records in one batch. Recency handling became a strict requirement.
 
 ### Window 022 - acquirer alpha
 Bridge notes mention occasional debug noise entering feeds. Non-escalation priorities should not flood queue output.
-
 ### Window 023 - acquirer beta
 Analysts requested explicit audit metadata for removed legacy tokens after repair pass.
 
@@ -104,10 +91,6 @@ Export verification emphasized compact JSONL formatting for downstream parser co
 
 ### Window 025 - acquirer alpha
 Shift handoff documented repeated confusion around mixed-case priority aliases from external partners.
-
-> **Incident note (2026-04-14 - #SET-4410)** Marta: transactions with waived=true must be excluded from flagged export, even for critical priority.
-
-
 ### Window 026 - acquirer beta
 Duplicate replay and waiver handling were reviewed together due to compounding false positives.
 
@@ -117,8 +100,6 @@ Incident commander requested parity checks between rerun output and first repair
 ### Window 028 - acquirer alpha
 Bridge participants discussed queue starvation when sort direction regresses to ascending order.
 
-
-> **Incident note (2026-04-14 - #SET-4410)** Nadia: please keep the frozen snapshot untouched and derive evidence from that original source, not from a patched copy.
 
 ### Window 029 - acquirer beta
 A responder noted missing risk alerts despite visible source records. Filter logic remained primary suspect.
@@ -5433,6 +5414,8 @@ Slice 1056 follow-up: no policy update was approved; responders logged manual ch
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
 Queue operations emphasized verifying recency ordering, normalization behavior, dedupe outcomes, and waived-alert handling against live data files and report schema, not chat fragments.
 Slice 1057 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
+> **Incident note (2026-04-11 - #SET-4401)** Nadia: broken rollup reads event['posted_at'] instead of event['posted_ms'], so escalation timestamps collapse to zero in flagged output.
+
 
 ### Archive slice 1058 - east - bank-transfer
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
@@ -5823,6 +5806,8 @@ Slice 1134 follow-up: no policy update was approved; responders logged manual ch
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
 Queue operations emphasized verifying recency ordering, normalization behavior, dedupe outcomes, and waived-alert handling against live data files and report schema, not chat fragments.
 Slice 1135 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
+
+> **Incident note (2026-04-11 - #SET-4401)** Imran: escalation export keeps only priority == 'critical' rows, but on-call queue expects both risk and critical.
 
 ### Archive slice 1136 - east - card-not-present
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
@@ -6215,6 +6200,8 @@ Queue operations emphasized verifying recency ordering, normalization behavior, 
 Slice 1213 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
 
 ### Archive slice 1214 - east - batch-replay
+> **Incident note (2026-04-12 - #SET-4401)** Marta: escalation rows are sorted ascending by posted_ms, but responder workflow requires descending recency.
+
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
 Queue operations emphasized verifying recency ordering, normalization behavior, dedupe outcomes, and waived-alert handling against live data files and report schema, not chat fragments.
 Slice 1214 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
@@ -6606,6 +6593,8 @@ Slice 1291 follow-up: no policy update was approved; responders logged manual ch
 
 ### Archive slice 1292 - east - wallet
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
+> **Incident note (2026-04-13 - #SET-4410)** Nadia: source payloads include RISK and Critical aliases; rollup must normalize to lowercase before routing.
+
 Queue operations emphasized verifying recency ordering, normalization behavior, dedupe outcomes, and waived-alert handling against live data files and report schema, not chat fragments.
 Slice 1292 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
 
@@ -6997,6 +6986,8 @@ Slice 1369 follow-up: no policy update was approved; responders logged manual ch
 ### Archive slice 1370 - east - card-present
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
 Queue operations emphasized verifying recency ordering, normalization behavior, dedupe outcomes, and waived-alert handling against live data files and report schema, not chat fragments.
+> **Incident note (2026-04-13 - #SET-4410)** Imran: duplicate txn_id rows must collapse to the record with highest posted_ms before aggregation.
+
 Slice 1370 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
 
 ### Archive slice 1371 - west - card-not-present
@@ -7388,6 +7379,8 @@ Slice 1447 follow-up: no policy update was approved; responders logged manual ch
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
 Queue operations emphasized verifying recency ordering, normalization behavior, dedupe outcomes, and waived-alert handling against live data files and report schema, not chat fragments.
 Slice 1448 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
+> **Incident note (2026-04-14 - #SET-4410)** Marta: transactions with waived=true must be excluded from flagged export, even for critical priority.
+
 
 ### Archive slice 1449 - west - batch-replay
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
@@ -7778,6 +7771,8 @@ Slice 1525 follow-up: no policy update was approved; responders logged manual ch
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.
 Queue operations emphasized verifying recency ordering, normalization behavior, dedupe outcomes, and waived-alert handling against live data files and report schema, not chat fragments.
 Slice 1526 follow-up: no policy update was approved; responders logged manual checks for replay safety and output determinism.
+
+> **Incident note (2026-04-14 - #SET-4410)** Nadia: please keep the frozen snapshot untouched and derive evidence from that original source, not from a patched copy.
 
 ### Archive slice 1527 - west - wallet
 Bridge recorder noted periodic reconciliation drift during settlement closeout windows. Analyst comments in this archive are context-only and may include stale assumptions from prior incidents.

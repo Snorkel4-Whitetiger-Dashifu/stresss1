@@ -143,14 +143,6 @@
       "input": "/app/data/events.json",
       "output_dir": "/app/output"
     },
-    "forbidden_executable_tokens": [
-      "event[\"posted_at\"]",
-      "priority == \"critical\""
-    ],
-    "required_executable_tokens": [
-      ".lower(",
-      "reverse=True"
-    ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
   "outputs": {
@@ -164,11 +156,7 @@
       "priority_key_order": ["critical", "debug", "info", "risk"]
     },
     "flagged_jsonl": {
-      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note"],
-      "sort": "posted_ms descending",
-      "priorities_included": ["risk", "critical"],
-      "exclude_waived": true,
-      "json_format": "compact (no space after colon)"
+      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note"]
     }
   }
 }
