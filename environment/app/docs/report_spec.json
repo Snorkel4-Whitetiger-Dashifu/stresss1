@@ -1,6 +1,6 @@
 {
   "title": "Settlement Rollup — Diagnosis & Report Spec",
-  "version": "3.0",
+  "version": "3.2",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -46,6 +46,7 @@
         "required_fields": ["dossier_quote", "pipeline_evidence", "repair_action"],
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
+        "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
         "required_terms_by_issue": {
           "wrong_posted_field": {
             "dossier_quote": ["posted_at", "posted_ms"],
@@ -117,17 +118,18 @@
       "build_escalations"
     ],
     "patched_workflow": "/app/workflow/export_report.py",
-    "forbidden_tokens": ["event[\"posted_at\"]", "priority == \"critical\""],
+    "forbidden_executable_tokens": [
+      "event[\"posted_at\"]",
+      "priority == \"critical\""
+    ],
     "removed_tokens_schema": {
-      "required_keys": ["event[\"posted_at\"]", "priority == \"critical\""],
-      "value_type": "boolean"
+      "description": "Map each forbidden_executable_tokens entry to a boolean (true when absent from patched executable code, excluding comments and docstrings)."
     },
     "pre_repair": {
       "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
       "capture_order": "before any write to export_report.py",
       "pipeline_tokens_present_schema": {
-        "required_keys": ["event[\"posted_at\"]", "priority == \"critical\""],
-        "value_type": "boolean"
+        "description": "Map each forbidden_executable_tokens entry to a boolean (true when present in frozen broken snapshot before repair)."
       }
     },
     "post_repair": {
@@ -141,8 +143,15 @@
       "input": "/app/data/events.json",
       "output_dir": "/app/output"
     },
-    "must_not_contain_after_repair": ["event[\"posted_at\"]", "priority == \"critical\""],
-    "must_contain_after_repair": ["posted_ms", "reverse=True", ".lower("]
+    "forbidden_executable_tokens": [
+      "event[\"posted_at\"]",
+      "priority == \"critical\""
+    ],
+    "required_executable_tokens": [
+      ".lower(",
+      "reverse=True"
+    ],
+    "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
   "outputs": {
     "summary_json": {
@@ -150,7 +159,7 @@
       "priority_counts_key_order": ["critical", "debug", "info", "risk"]
     },
     "service_matrix_json": {
-      "description": "Per-merchant priority counts from canonical deduped records.",
+      "description": "Per-merchant priority counts from canonical processed records.",
       "merchant_sort": "ascending alphabetical",
       "priority_key_order": ["critical", "debug", "info", "risk"]
     },
@@ -158,7 +167,8 @@
       "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note"],
       "sort": "posted_ms descending",
       "priorities_included": ["risk", "critical"],
-      "exclude_waived": true
+      "exclude_waived": true,
+      "json_format": "compact (no space after colon)"
     }
   }
 }

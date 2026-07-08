@@ -23,11 +23,11 @@ ISSUE_DEFINITIONS = [
         "resolution": "Use posted_ms when emitting escalation rows.",
         "evidence": {
             "dossier_quote": (
-                "Broken rollup reads event['posted_at'] instead of event['posted_ms'], "
+                "Nadia: broken rollup reads event['posted_at'] instead of event['posted_ms'], "
                 "so escalation timestamps collapse to zero in flagged output."
             ),
             "pipeline_evidence": 'event["posted_at"] if "posted_at" in event else 0',
-            "repair_action": "Emit posted_ms directly from canonical transaction rows.",
+            "repair_action": "Use posted_ms when emitting escalation rows.",
         },
     },
     {
@@ -37,10 +37,11 @@ ISSUE_DEFINITIONS = [
         "resolution": "Escalate both risk and critical priorities.",
         "evidence": {
             "dossier_quote": (
-                "Escalation export keeps only priority == 'critical' rows, but on-call queue expects both risk and critical."
+                "Imran: escalation export keeps only priority == 'critical' rows, "
+                "but on-call queue expects both risk and critical."
             ),
             "pipeline_evidence": 'if priority == "critical":',
-            "repair_action": "Use risk+critical escalation policy for flagged rows.",
+            "repair_action": "Include risk and critical rows in escalation export.",
         },
     },
     {
@@ -50,7 +51,8 @@ ISSUE_DEFINITIONS = [
         "resolution": "Sort escalations by posted_ms descending.",
         "evidence": {
             "dossier_quote": (
-                "Escalation rows are sorted ascending by posted_ms, but responder workflow requires descending recency."
+                "Marta: escalation rows are sorted ascending by posted_ms, but responder workflow "
+                "requires descending recency."
             ),
             "pipeline_evidence": 'escalations.sort(key=lambda row: row["posted_ms"])',
             "repair_action": "Sort with reverse=True on posted_ms for recency-first ordering.",
@@ -63,9 +65,10 @@ ISSUE_DEFINITIONS = [
         "resolution": "Normalize priority with .lower() before counting and escalation decisions.",
         "evidence": {
             "dossier_quote": (
-                "Source payloads include RISK and Critical aliases; rollup must normalize to lowercase before routing."
+                "Nadia: source payloads include RISK and Critical aliases; rollup must normalize "
+                "to lowercase before routing."
             ),
-            "pipeline_evidence": "priority = event.get(\"priority\")",
+            "pipeline_evidence": 'priority = event.get("priority")',
             "repair_action": "Normalize priority values using .lower() in canonicalization.",
         },
     },
@@ -76,10 +79,11 @@ ISSUE_DEFINITIONS = [
         "resolution": "Dedupe by txn_id and keep the highest posted_ms row.",
         "evidence": {
             "dossier_quote": (
-                "Duplicate txn_id rows must collapse to the record with highest posted_ms before aggregation."
+                "Imran: duplicate txn_id rows must collapse to the record with highest posted_ms "
+                "before aggregation."
             ),
             "pipeline_evidence": "for event in events:",
-            "repair_action": "Add dedupe pass keyed by txn_id with max posted_ms selection.",
+            "repair_action": "dedupe txn_id rows keeping the highest posted_ms before export.",
         },
     },
     {
@@ -89,10 +93,11 @@ ISSUE_DEFINITIONS = [
         "resolution": "Exclude waived=true rows from flagged.jsonl while retaining summary counts.",
         "evidence": {
             "dossier_quote": (
-                "Transactions with waived=true must be excluded from flagged export, even for critical priority."
+                "Marta: transactions with waived=true must be excluded from flagged export, "
+                "even for critical priority."
             ),
             "pipeline_evidence": "escalations.append(",
-            "repair_action": "Skip waived rows when constructing flagged escalation list.",
+            "repair_action": "Exclude waived=true rows from flagged escalation export.",
         },
     },
 ]
@@ -125,7 +130,7 @@ def pre_repair_audit() -> dict:
 
 def patch_workflow() -> None:
     for candidate in (
-        Path(__file__).resolve().parent / "export_report.py",
+        Path(__file__).resolve().parent / "export_report_fixed.py",
         Path("/app/export_report_fixed.py"),
     ):
         if candidate.exists():

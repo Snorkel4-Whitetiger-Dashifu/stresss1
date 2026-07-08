@@ -2,30 +2,15 @@
 Mercury Payments Ops - escalation bridge archive (2026-Q1 through 2026-Q2).
 
 ## Executive Summary
-The `/app/workflow/export_report.py` rollup emits incorrect escalation output for settlement transactions. Responders reported dropped risk rows, waived alerts leaking into flagged output, zeroed posted timestamps, and oldest-first ordering that breaks queue triage.
+Settlement rollup export has been unstable since early 2026. Early triage blamed dashboard cache lag and suggested CSV fallback — those notes are archived below and may contradict later findings. For acceptance behavior, cross-check analyst notes embedded in bridge-window records against bundled events.json — early triage sections above are not authoritative.
 
-## Analyst Chat Log (excerpted)
+## Initial Triage Notes (2026-03 — superseded)
+Lead analyst recommended switching to CSV export and disabling flagged.jsonl paging until cache refresh SLO recovered. Replay against bundled events.json showed the pipeline miscounts even on cold cache. Do not implement CSV fallback for this incident.
 
-### 2026-04-11 - #SET-4401
-Nadia: broken rollup reads event['posted_at'] instead of event['posted_ms'], so escalation timestamps collapse to zero in flagged output.
-
-### 2026-04-11 - #SET-4401
-Imran: escalation export keeps only priority == 'critical' rows, but on-call queue expects both risk and critical.
-
-### 2026-04-12 - #SET-4401
-Marta: escalation rows are sorted ascending by posted_ms, but responder workflow requires descending recency.
-
-### 2026-04-13 - #SET-4410
-Nadia: source payloads include RISK and Critical aliases; rollup must normalize to lowercase before routing.
-
-### 2026-04-13 - #SET-4410
-Imran: duplicate txn_id rows must collapse to the record with highest posted_ms before aggregation.
-
-### 2026-04-14 - #SET-4410
-Marta: transactions with waived=true must be excluded from flagged export, even for critical priority.
-
-### 2026-04-14 - #SET-4410
-Nadia: please keep the frozen snapshot untouched and derive evidence from that original source, not from a patched copy.
+## Preliminary Hypotheses (2026-03 — mostly wrong)
+- Dashboard read replica lag causing stale escalation counts (disproved: direct pipeline export shows same wrong counts)
+- Missing posted_at metadata in upstream feed (disproved on replay against bundled events.json)
+- Risk-priority rows intentionally excluded by design (disproved on replay against bundled events.json)
 
 ## Settlement Bridge Archive (noise, non-authoritative)
 Use this section as context only; acceptance is governed by `/app/data/events.json`, `/app/workflow/export_report.py`, and `/app/docs/report_spec.json`.
@@ -45,6 +30,9 @@ Finance raised concern about delayed closeout rows. Engineering confirmed source
 ### Window 005 - acquirer beta
 Intermittent queue lag caused triage confusion. Reviewers asked for strict recency-first ordering in escalations.
 
+
+> **Incident note (2026-04-11 - #SET-4401)** Nadia: broken rollup reads event['posted_at'] instead of event['posted_ms'], so escalation timestamps collapse to zero in flagged output.
+
 ### Window 006 - acquirer gamma
 Responder shift reported inconsistent priority alias casing in inbound records. Follow-up requested normalization.
 
@@ -55,6 +43,9 @@ Settlement operator saw duplicate transaction identifiers across reprocessed bat
 Some high-severity rows were waived by analysts but still surfaced downstream. Export exclusion logic was questioned.
 
 ### Window 009 - acquirer gamma
+
+> **Incident note (2026-04-11 - #SET-4401)** Imran: escalation export keeps only priority == 'critical' rows, but on-call queue expects both risk and critical.
+
 Bridge participants flagged mismatch between on-call queue and exported flagged rows. Scope remained pipeline-side.
 
 ### Window 010 - acquirer alpha
@@ -69,6 +60,9 @@ Triagers highlighted risk-level alerts missing from escalation exports. Manual r
 ### Window 013 - acquirer alpha
 A replay job introduced duplicate txn_id rows with newer timestamps. Team aligned on newest-record-wins semantics.
 
+> **Incident note (2026-04-12 - #SET-4401)** Marta: escalation rows are sorted ascending by posted_ms, but responder workflow requires descending recency.
+
+
 ### Window 014 - acquirer beta
 Escalation dashboard drifted from raw ledger feed. Root cause still pointed to export transformation defects.
 
@@ -81,6 +75,9 @@ Field mapping audit identified ambiguity between posted_at and posted_ms labels 
 ### Window 017 - acquirer beta
 Bridge transcripts captured repeated requests for deterministic output keys and stable schema ordering.
 
+
+> **Incident note (2026-04-13 - #SET-4410)** Nadia: source payloads include RISK and Critical aliases; rollup must normalize to lowercase before routing.
+
 ### Window 018 - acquirer gamma
 Ops manager requested no hardcoded counters in summary outputs. Metrics must be computed from input rows.
 
@@ -91,6 +88,9 @@ Responder runbook confirmed escalations include both risk and critical prioritie
 Service owners warned against patching snapshot artifacts. Snapshot remains evidence baseline for diagnosis.
 
 ### Window 021 - acquirer gamma
+
+> **Incident note (2026-04-13 - #SET-4410)** Imran: duplicate txn_id rows must collapse to the record with highest posted_ms before aggregation.
+
 Ledger replay produced out-of-order records in one batch. Recency handling became a strict requirement.
 
 ### Window 022 - acquirer alpha
@@ -105,6 +105,9 @@ Export verification emphasized compact JSONL formatting for downstream parser co
 ### Window 025 - acquirer alpha
 Shift handoff documented repeated confusion around mixed-case priority aliases from external partners.
 
+> **Incident note (2026-04-14 - #SET-4410)** Marta: transactions with waived=true must be excluded from flagged export, even for critical priority.
+
+
 ### Window 026 - acquirer beta
 Duplicate replay and waiver handling were reviewed together due to compounding false positives.
 
@@ -113,6 +116,9 @@ Incident commander requested parity checks between rerun output and first repair
 
 ### Window 028 - acquirer alpha
 Bridge participants discussed queue starvation when sort direction regresses to ascending order.
+
+
+> **Incident note (2026-04-14 - #SET-4410)** Nadia: please keep the frozen snapshot untouched and derive evidence from that original source, not from a patched copy.
 
 ### Window 029 - acquirer beta
 A responder noted missing risk alerts despite visible source records. Filter logic remained primary suspect.
