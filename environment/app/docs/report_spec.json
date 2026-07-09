@@ -1,6 +1,6 @@
 {
   "title": "Settlement Rollup — Diagnosis & Report Spec",
-  "version": "3.2",
+  "version": "3.3",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -11,7 +11,8 @@
           "report": "/app/output/diagnosis.json"
         },
         "must_include_all_allowed_ids": true,
-        "must_not_include_repaired_keys": ["verified_summary", "output_paths"]
+        "must_not_include_repaired_keys": ["verified_summary", "output_paths"],
+        "input_events_path": "/app/data/events.json"
       },
       "repair": {
         "usage": "python3 /app/log_audit.py repair --output-dir PATH",
@@ -47,6 +48,7 @@
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
         "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
+        "term_matching": "case-sensitive substring match for all required_terms_by_issue entries",
         "required_terms_by_issue": {
           "wrong_posted_field": {
             "dossier_quote": ["posted_at", "posted_ms"],
@@ -83,7 +85,8 @@
     },
     "input_stats": {
       "required_fields": ["record_count", "unique_txn_ids", "merchants"],
-      "merchants_sort": "ascending alphabetical"
+      "merchants_sort": "ascending alphabetical",
+      "source_events_path": "/app/data/events.json"
     },
     "verified_summary": {
       "required_fields": [
@@ -102,6 +105,12 @@
       "flagged_jsonl": "<output-dir>/flagged.jsonl",
       "service_matrix_json": "<output-dir>/service_matrix.json"
     }
+  },
+  "canonicalization": {
+    "dedupe_by_txn_id": "collapse duplicate txn_id rows, keeping the row with the highest posted_ms",
+    "priority_normalization": "lowercase priority strings before counting and escalation",
+    "total_records": "count canonical deduped records (waived rows remain in totals)",
+    "flagged_export": "include risk and critical only, exclude waived=true, sort posted_ms descending"
   },
   "repair_audit": {
     "required_keys": [
@@ -143,6 +152,14 @@
       "input": "/app/data/events.json",
       "output_dir": "/app/output"
     },
+    "forbidden_executable_tokens": [
+      "event[\"posted_at\"]",
+      "priority == \"critical\""
+    ],
+    "required_executable_tokens": [
+      ".lower(",
+      "reverse=True"
+    ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
   "outputs": {
@@ -151,12 +168,29 @@
       "priority_counts_key_order": ["critical", "debug", "info", "risk"]
     },
     "service_matrix_json": {
-      "description": "Per-merchant priority counts from canonical processed records.",
+      "description": "Flat map of merchant -> per-priority counts from canonical deduped records.",
+      "shape": {
+        "<merchant>": {
+          "critical": 0,
+          "debug": 0,
+          "info": 0,
+          "risk": 0
+        }
+      },
+      "notes": "Top-level keys are merchant names only. Do not wrap counts in schema_version, merchants, or metadata objects.",
       "merchant_sort": "ascending alphabetical",
       "priority_key_order": ["critical", "debug", "info", "risk"]
     },
     "flagged_jsonl": {
-      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note"]
+      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note"],
+      "sort": "posted_ms descending",
+      "priorities_included": ["risk", "critical"],
+      "exclude_waived": true,
+      "json_format": "compact (no space after colon; use json.dumps separators=(',', ':'))"
     }
+  },
+  "long_context": {
+    "dossier_path": "/app/incident/export_dossier.md",
+    "minimum_line_count": 500
   }
 }

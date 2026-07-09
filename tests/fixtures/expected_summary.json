@@ -14,46 +14,6 @@
   "waived_excluded_count": 1,
   "record_count": 18,
   "unique_ids": 15,
-  "required_issue_ids": [
-    "wrong_posted_field",
-    "priority_filter",
-    "recency_order",
-    "priority_normalization",
-    "dedupe_transaction",
-    "waived_filter"
-  ],
-  "issue_evidence_terms": {
-    "wrong_posted_field": {
-      "dossier_terms": ["posted_at", "posted_ms"],
-      "pipeline_terms": ["event[\"posted_at\"]"],
-      "repair_terms": ["posted_ms"]
-    },
-    "priority_filter": {
-      "dossier_terms": ["risk", "critical"],
-      "pipeline_terms": ["priority == \"critical\""],
-      "repair_terms": ["risk"]
-    },
-    "recency_order": {
-      "dossier_terms": ["ascending", "descending"],
-      "pipeline_terms": ["sort", "posted_ms"],
-      "repair_terms": ["reverse=True"]
-    },
-    "priority_normalization": {
-      "dossier_terms": ["RISK", "lowercase"],
-      "pipeline_terms": ["priority"],
-      "repair_terms": [".lower("]
-    },
-    "dedupe_transaction": {
-      "dossier_terms": ["duplicate", "posted_ms"],
-      "pipeline_terms": ["for event in events"],
-      "repair_terms": ["dedupe"]
-    },
-    "waived_filter": {
-      "dossier_terms": ["waived", "excluded"],
-      "pipeline_terms": ["escalations.append"],
-      "repair_terms": ["waived"]
-    }
-  },
   "expected_flagged_ids_desc": ["t15", "t13", "t10", "t09", "t07", "t06", "t02", "t01"],
   "expected_flagged_ts_ms_desc": [
     1800000009000,
@@ -70,14 +30,6 @@
     "beta": {"critical": 1, "debug": 0, "info": 3, "risk": 1},
     "gamma": {"critical": 2, "debug": 0, "info": 1, "risk": 2}
   },
-  "forbidden_executable_tokens": [
-    "event[\"posted_at\"]",
-    "priority == \"critical\""
-  ],
-  "required_executable_tokens": [
-    ".lower(",
-    "reverse=True"
-  ],
   "broken_pipeline_sha256": "98c75e8fcb037ee3e68349973a60f44f0068dba45de632ffe4089f8c2f76ca3d",
   "broken_flagged_count": 5,
   "broken_flagged_ids_asc": ["t01", "t10", "t10", "t12", "t15"],

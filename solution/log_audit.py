@@ -13,94 +13,50 @@ from pathlib import Path
 
 EVENTS_PATH = Path("/app/data/events.json")
 PIPELINE_PATH = Path("/app/workflow/export_report.py")
+ORIGINAL_PIPELINE = Path("/app/workflow/.export_report.original")
+SPEC_PATH = Path("/app/docs/report_spec.json")
 FORBIDDEN_TOKENS = ('event["posted_at"]', 'priority == "critical"')
 
-ISSUE_DEFINITIONS = [
-    {
-        "id": "wrong_posted_field",
+ISSUE_META = {
+    "wrong_posted_field": {
         "severity": "critical",
-        "description": "Escalation rows use posted_at instead of posted_ms, flattening timestamps to zero.",
+        "description": "Escalation rows use posted_at instead of posted_ms.",
         "resolution": "Use posted_ms when emitting escalation rows.",
-        "evidence": {
-            "dossier_quote": (
-                "Nadia: broken rollup reads event['posted_at'] instead of event['posted_ms'], "
-                "so escalation timestamps collapse to zero in flagged output."
-            ),
-            "pipeline_evidence": 'event["posted_at"] if "posted_at" in event else 0',
-            "repair_action": "Use posted_ms when emitting escalation rows.",
-        },
     },
-    {
-        "id": "priority_filter",
+    "priority_filter": {
         "severity": "critical",
-        "description": "Workflow escalates only exact critical rows and drops risk priority records.",
-        "resolution": "Escalate both risk and critical priorities.",
-        "evidence": {
-            "dossier_quote": (
-                "Imran: escalation export keeps only priority == 'critical' rows, "
-                "but on-call queue expects both risk and critical."
-            ),
-            "pipeline_evidence": 'if priority == "critical":',
-            "repair_action": "Include risk and critical rows in escalation export.",
-        },
+        "description": "Workflow escalates only exact critical rows.",
+        "resolution": "Include risk and critical priorities in flagged export.",
     },
-    {
-        "id": "recency_order",
+    "recency_order": {
         "severity": "high",
-        "description": "Escalations are sorted oldest-first instead of newest-first.",
-        "resolution": "Sort escalations by posted_ms descending.",
-        "evidence": {
-            "dossier_quote": (
-                "Marta: escalation rows are sorted ascending by posted_ms, but responder workflow "
-                "requires descending recency."
-            ),
-            "pipeline_evidence": 'escalations.sort(key=lambda row: row["posted_ms"])',
-            "repair_action": "Sort with reverse=True on posted_ms for recency-first ordering.",
-        },
+        "description": "Escalations are sorted oldest-first.",
+        "resolution": "Sort escalations by posted_ms descending (reverse=True).",
     },
-    {
-        "id": "priority_normalization",
+    "priority_normalization": {
         "severity": "high",
-        "description": "Priority aliases like RISK and Critical are never normalized to lowercase.",
-        "resolution": "Normalize priority with .lower() before counting and escalation decisions.",
-        "evidence": {
-            "dossier_quote": (
-                "Nadia: source payloads include RISK and Critical aliases; rollup must normalize "
-                "to lowercase before routing."
-            ),
-            "pipeline_evidence": 'priority = event.get("priority")',
-            "repair_action": "Normalize priority values using .lower() in canonicalization.",
-        },
+        "description": "Priority aliases are not normalized to lowercase.",
+        "resolution": "Normalize priority with .lower() before filtering.",
     },
-    {
-        "id": "dedupe_transaction",
+    "dedupe_transaction": {
         "severity": "high",
-        "description": "Duplicate txn_id rows are not collapsed before summary and escalation output.",
-        "resolution": "Dedupe by txn_id and keep the highest posted_ms row.",
-        "evidence": {
-            "dossier_quote": (
-                "Imran: duplicate txn_id rows must collapse to the record with highest posted_ms "
-                "before aggregation."
-            ),
-            "pipeline_evidence": "for event in events:",
-            "repair_action": "dedupe txn_id rows keeping the highest posted_ms before export.",
-        },
+        "description": "Duplicate txn_id rows are exported multiple times.",
+        "resolution": "dedupe txn_id rows keeping the highest posted_ms before export.",
     },
-    {
-        "id": "waived_filter",
+    "waived_filter": {
         "severity": "high",
-        "description": "Waived alerts still appear in flagged output even when they should be excluded.",
-        "resolution": "Exclude waived=true rows from flagged.jsonl while retaining summary counts.",
-        "evidence": {
-            "dossier_quote": (
-                "Marta: transactions with waived=true must be excluded from flagged export, "
-                "even for critical priority."
-            ),
-            "pipeline_evidence": "escalations.append(",
-            "repair_action": "Exclude waived=true rows from flagged escalation export.",
-        },
+        "description": "Waived rows appear in flagged export.",
+        "resolution": "Exclude waived rows from flagged export.",
     },
-]
+}
+
+
+def _normalize_ws(text: str) -> str:
+    return " ".join(text.split())
+
+
+def load_spec() -> dict:
+    return json.loads(SPEC_PATH.read_text())
 
 
 def load_events(path: Path = EVENTS_PATH) -> list[dict]:
@@ -128,6 +84,79 @@ def pre_repair_audit() -> dict:
     }
 
 
+def _line_contains_all(line: str, terms: list[str]) -> bool:
+    return all(term in line for term in terms)
+
+
+def find_dossier_quote(dossier_text: str, terms: list[str]) -> str:
+    normalized = _normalize_ws(dossier_text)
+    candidates: list[str] = []
+    for line in dossier_text.splitlines():
+        stripped = line.strip()
+        if len(stripped) < 30 or not _line_contains_all(stripped, terms):
+            continue
+        if _normalize_ws(stripped) in normalized:
+            candidates.append(stripped)
+    if not candidates:
+        raise ValueError(f"no dossier quote found for terms {terms}")
+    return max(candidates, key=len)
+
+
+def find_pipeline_evidence(original_pipeline: str, terms: list[str]) -> str:
+    for line in original_pipeline.splitlines():
+        stripped = line.strip()
+        if stripped and _line_contains_all(stripped, terms):
+            return stripped
+    if all(term in original_pipeline for term in terms):
+        for line in original_pipeline.splitlines():
+            if any(term in line for term in terms):
+                return line.strip()
+    raise ValueError(f"no pipeline evidence found for terms {terms}")
+
+
+def build_repair_action(issue_id: str, terms: list[str]) -> str:
+    templates = {
+        "wrong_posted_field": "Use posted_ms when emitting escalation rows.",
+        "priority_filter": "Include risk and critical rows in escalation export.",
+        "recency_order": "Sort with reverse=True on posted_ms for recency-first ordering.",
+        "priority_normalization": "Normalize priority values using .lower() in canonicalization.",
+        "dedupe_transaction": "dedupe txn_id rows keeping the highest posted_ms before export.",
+        "waived_filter": "Exclude waived=true rows from flagged escalation export.",
+    }
+    action = templates[issue_id]
+    for term in terms:
+        if term not in action:
+            action = f"{action} ({term})"
+    return action
+
+
+def build_issues_from_sources(dossier_text: str, original_pipeline: str, spec: dict) -> list[dict]:
+    evidence_spec = spec["diagnosis_report"]["issues_found_item"]["evidence"][
+        "required_terms_by_issue"
+    ]
+    allowed_ids = spec["diagnosis_report"]["issues_found_item"]["allowed_ids"]
+    issues = []
+    for issue_id in allowed_ids:
+        terms = evidence_spec[issue_id]
+        meta = ISSUE_META[issue_id]
+        issues.append(
+            {
+                "id": issue_id,
+                "severity": meta["severity"],
+                "description": meta["description"],
+                "resolution": meta["resolution"],
+                "evidence": {
+                    "dossier_quote": find_dossier_quote(dossier_text, terms["dossier_quote"]),
+                    "pipeline_evidence": find_pipeline_evidence(
+                        original_pipeline, terms["pipeline_evidence"]
+                    ),
+                    "repair_action": build_repair_action(issue_id, terms["repair_action"]),
+                },
+            }
+        )
+    return issues
+
+
 def patch_workflow() -> None:
     for candidate in (
         Path(__file__).resolve().parent / "export_report_fixed.py",
@@ -142,12 +171,13 @@ def patch_workflow() -> None:
 def build_diagnosis_report(
     status: str,
     events: list[dict],
+    issues: list[dict],
     summary: dict | None = None,
     output_dir: Path | None = None,
 ) -> dict:
     report = {
         "pipeline_status": status,
-        "issues_found": ISSUE_DEFINITIONS,
+        "issues_found": issues,
         "input_stats": input_stats(events),
     }
     if summary is not None and output_dir is not None:
@@ -161,9 +191,12 @@ def build_diagnosis_report(
 
 
 def cmd_diagnose(dossier: Path, report_path: Path) -> None:
-    _ = dossier.read_text(encoding="utf-8", errors="replace")
+    dossier_text = dossier.read_text(encoding="utf-8", errors="replace")
+    spec = load_spec()
+    original_pipeline = ORIGINAL_PIPELINE.read_text()
     events = load_events()
-    report = build_diagnosis_report("diagnosed", events)
+    issues = build_issues_from_sources(dossier_text, original_pipeline, spec)
+    report = build_diagnosis_report("diagnosed", events, issues)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2) + "\n")
 
@@ -173,6 +206,12 @@ def cmd_repair(output_dir: Path) -> None:
     diagnosis_path = output_dir / "diagnosis.json"
     audit_path = output_dir / "repair_audit.json"
     rerun_dir = output_dir / "rerun"
+    dossier_path = Path("/app/incident/export_dossier.md")
+
+    spec = load_spec()
+    dossier_text = dossier_path.read_text(encoding="utf-8", errors="replace")
+    original_pipeline = ORIGINAL_PIPELINE.read_text()
+    issues = build_issues_from_sources(dossier_text, original_pipeline, spec)
 
     pre_audit = pre_repair_audit()
     patch_workflow()
@@ -210,18 +249,13 @@ def cmd_repair(output_dir: Path) -> None:
 
     events = load_events()
     summary = json.loads((output_dir / "summary.json").read_text())
-    diagnosis = build_diagnosis_report("repaired", events, summary, output_dir)
+    diagnosis = build_diagnosis_report("repaired", events, issues, summary, output_dir)
     diagnosis_path.write_text(json.dumps(diagnosis, indent=2) + "\n")
 
     code = PIPELINE_PATH.read_text()
     audit = {
         "patched_workflow": str(PIPELINE_PATH),
-        "processing_steps": [
-            "normalize_priority",
-            "dedupe_txn_id",
-            "filter_waived",
-            "build_escalations",
-        ],
+        "processing_steps": spec["repair_audit"]["processing_steps"],
         "removed_tokens": {token: token not in code for token in FORBIDDEN_TOKENS},
         "pre_repair": pre_audit,
         "post_repair": {

@@ -23,10 +23,16 @@ PIPELINE = Path("/app/workflow/export_report.py")
 ORIGINAL_PIPELINE = Path("/app/workflow/.export_report.original")
 DOSSIER_PATH = Path("/app/incident/export_dossier.md")
 INPUT_PATH = Path("/app/data/events.json")
+REPORT_SPEC_PATH = Path("/app/docs/report_spec.json")
 FIXTURES = Path("/tests/fixtures/expected_summary.json")
+SPEC_DATA = json.loads(REPORT_SPEC_PATH.read_text())
 FIXTURE_DATA = json.loads(FIXTURES.read_text())
-FORBIDDEN_TOKENS = tuple(FIXTURE_DATA["forbidden_executable_tokens"])
-REQUIRED_TOKENS = tuple(FIXTURE_DATA["required_executable_tokens"])
+ISSUE_EVIDENCE_TERMS = SPEC_DATA["diagnosis_report"]["issues_found_item"]["evidence"][
+    "required_terms_by_issue"
+]
+REQUIRED_ISSUE_IDS = SPEC_DATA["diagnosis_report"]["issues_found_item"]["allowed_ids"]
+FORBIDDEN_TOKENS = tuple(SPEC_DATA["repair_audit"]["forbidden_executable_tokens"])
+REQUIRED_TOKENS = tuple(SPEC_DATA["workflow_repair"]["required_executable_tokens"])
 ESCALATION_PRIORITIES = {"risk", "critical"}
 PRIORITY_ORDER = ("critical", "debug", "info", "risk")
 
@@ -205,7 +211,8 @@ def test_cli_exists():
 
 
 def test_dossier_has_context():
-    assert len(DOSSIER_PATH.read_text().splitlines()) >= 120
+    minimum = SPEC_DATA["long_context"]["minimum_line_count"]
+    assert len(DOSSIER_PATH.read_text().splitlines()) >= minimum
 
 
 def test_repair_produces_required_outputs():
@@ -226,9 +233,9 @@ def test_output_paths_exact(diagnosis: dict):
     assert paths["service_matrix_json"] == str(MATRIX_PATH)
 
 
-def test_issues_found_exactly_six_allowed_ids(diagnosis: dict, expected: dict):
+def test_issues_found_exactly_six_allowed_ids(diagnosis: dict):
     assert len(diagnosis["issues_found"]) == 6
-    assert {item["id"] for item in diagnosis["issues_found"]} == set(expected["required_issue_ids"])
+    assert {item["id"] for item in diagnosis["issues_found"]} == set(REQUIRED_ISSUE_IDS)
 
 
 def test_issue_item_required_fields(diagnosis: dict):
@@ -237,21 +244,21 @@ def test_issue_item_required_fields(diagnosis: dict):
             assert key in issue
 
 
-def test_issue_evidence(diagnosis: dict, expected: dict):
+def test_issue_evidence(diagnosis: dict):
     original_pipeline = ORIGINAL_PIPELINE.read_text()
     issues = {item["id"]: item for item in diagnosis["issues_found"]}
-    for issue_id, terms in expected["issue_evidence_terms"].items():
+    for issue_id, terms in ISSUE_EVIDENCE_TERMS.items():
         evidence = issues[issue_id]["evidence"]
         for key in ("dossier_quote", "pipeline_evidence", "repair_action"):
             assert key in evidence
             assert len(evidence[key]) >= 10
         assert len(evidence["dossier_quote"]) >= 30
-        for term in terms["dossier_terms"]:
+        for term in terms["dossier_quote"]:
             assert term in evidence["dossier_quote"]
-        for term in terms["pipeline_terms"]:
+        for term in terms["pipeline_evidence"]:
             assert term in evidence["pipeline_evidence"]
         assert evidence["pipeline_evidence"] in original_pipeline
-        for term in terms["repair_terms"]:
+        for term in terms["repair_action"]:
             assert term in evidence["repair_action"]
 
 
@@ -354,12 +361,7 @@ def test_repair_audit(diagnosis: dict, expected: dict, summary: dict):
     audit = json.loads(REPAIR_AUDIT_PATH.read_text())
     code = _executable_text(PIPELINE.read_text())
     assert audit["patched_workflow"] == str(PIPELINE)
-    assert audit["processing_steps"] == [
-        "normalize_priority",
-        "dedupe_txn_id",
-        "filter_waived",
-        "build_escalations",
-    ]
+    assert audit["processing_steps"] == SPEC_DATA["repair_audit"]["processing_steps"]
     assert audit["removed_tokens"] == {token: token not in code for token in FORBIDDEN_TOKENS}
     assert all(audit["removed_tokens"].values())
     assert audit["pre_repair"]["pipeline_source_sha256"] == expected["broken_pipeline_sha256"]
@@ -422,7 +424,7 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
     assert data["input_stats"]["merchants"] == expected["merchants"]
     for key in ("verified_summary", "output_paths"):
         assert key not in data
-    assert {item["id"] for item in data["issues_found"]} == set(expected["required_issue_ids"])
+    assert {item["id"] for item in data["issues_found"]} == set(REQUIRED_ISSUE_IDS)
     for issue in data["issues_found"]:
         for key in ("id", "severity", "description", "resolution", "evidence"):
             assert key in issue
