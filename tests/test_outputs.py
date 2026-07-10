@@ -35,6 +35,7 @@ FORBIDDEN_TOKENS = tuple(SPEC_DATA["repair_audit"]["forbidden_executable_tokens"
 REQUIRED_TOKENS = tuple(SPEC_DATA["workflow_repair"]["required_executable_tokens"])
 ESCALATION_PRIORITIES = {"risk", "critical"}
 PRIORITY_ORDER = ("critical", "debug", "info", "risk")
+PRIORITY_RANK = {"debug": 1, "info": 2, "risk": 3, "critical": 4}
 
 
 def _normalize_ws(text: str) -> str:
@@ -72,29 +73,63 @@ def _load_events(path: Path) -> list[dict]:
     return json.loads(path.read_text())
 
 
+def _normalize_priority(value: object) -> str:
+    return str(value if value is not None else "").strip().lower()
+
+
+def _normalize_merchant(value: object) -> str:
+    return str(value if value is not None else "").strip().lower()
+
+
+def _normalize_waived(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return bool(value)
+
+
+def _priority_rank(priority: str) -> int:
+    return PRIORITY_RANK.get(priority, 0)
+
+
 def _canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
         normalized = dict(event)
-        normalized["priority"] = str(normalized.get("priority", "")).lower()
+        normalized["priority"] = _normalize_priority(normalized.get("priority", ""))
+        normalized["merchant"] = _normalize_merchant(normalized.get("merchant", ""))
+        normalized["waived"] = _normalize_waived(normalized.get("waived", False))
         txn_id = str(normalized["txn_id"])
         current = deduped.get(txn_id)
-        if current is None or normalized["posted_ms"] > current["posted_ms"]:
+        if current is None:
+            deduped[txn_id] = normalized
+            continue
+        replace = False
+        if normalized["posted_ms"] > current["posted_ms"]:
+            replace = True
+        elif normalized["posted_ms"] == current["posted_ms"]:
+            if _priority_rank(normalized["priority"]) > _priority_rank(current["priority"]):
+                replace = True
+            elif _priority_rank(normalized["priority"]) == _priority_rank(current["priority"]):
+                if str(normalized.get("note", "")) > str(current.get("note", "")):
+                    replace = True
+        if replace:
             deduped[txn_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["posted_ms"])
 
 
 def _is_escalation(event: dict) -> bool:
-    if event.get("waived") is True:
+    if _normalize_waived(event.get("waived", False)):
         return False
-    return event["priority"] in ESCALATION_PRIORITIES
+    return _normalize_priority(event.get("priority", "")) in ESCALATION_PRIORITIES
 
 
 def _build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     matrix: dict[str, dict[str, int]] = {}
     for event in events:
-        merchant = str(event.get("merchant", ""))
-        priority = str(event.get("priority", ""))
+        merchant = _normalize_merchant(event.get("merchant", ""))
+        priority = _normalize_priority(event.get("priority", ""))
         matrix.setdefault(merchant, {name: 0 for name in PRIORITY_ORDER})
         if priority in matrix[merchant]:
             matrix[merchant][priority] += 1
@@ -107,10 +142,10 @@ def _compute_summary(events: list[dict]) -> dict:
     merchants: set[str] = set()
     escalations = _compute_flagged(events)
     for event in canonical:
-        priority = str(event.get("priority", ""))
+        priority = _normalize_priority(event.get("priority", ""))
         if priority in priority_counts:
             priority_counts[priority] += 1
-        merchants.add(str(event.get("merchant", "")))
+        merchants.add(_normalize_merchant(event.get("merchant", "")))
     return {
         "schema_version": "settlement-rollup-v2",
         "raw_record_count": len(events),
@@ -122,7 +157,8 @@ def _compute_summary(events: list[dict]) -> dict:
         "waived_excluded_count": sum(
             1
             for event in canonical
-            if event.get("waived") is True and event["priority"] in ESCALATION_PRIORITIES
+            if _normalize_waived(event.get("waived", False))
+            and _normalize_priority(event.get("priority", "")) in ESCALATION_PRIORITIES
         ),
     }
 
@@ -136,12 +172,18 @@ def _compute_flagged(events: list[dict]) -> list[dict]:
             {
                 "txn_id": event["txn_id"],
                 "posted_ms": event["posted_ms"],
-                "priority": event["priority"],
-                "merchant": event["merchant"],
+                "priority": _normalize_priority(event["priority"]),
+                "merchant": _normalize_merchant(event["merchant"]),
                 "note": event["note"],
             }
         )
-    rows.sort(key=lambda row: row["posted_ms"], reverse=True)
+    rows.sort(
+        key=lambda row: (
+            -row["posted_ms"],
+            -_priority_rank(row["priority"]),
+            str(row["txn_id"]),
+        )
+    )
     return rows
 
 
@@ -458,3 +500,99 @@ def test_repair_supports_custom_output_dir(tmp_path_factory, expected: dict):
         assert summary["escalated_count"] == expected["escalated_count"]
     finally:
         PIPELINE.write_text(current)
+
+
+def test_dedupe_tie_break_priority_and_note():
+    events = [
+        {
+            "txn_id": "x1",
+            "posted_ms": 100,
+            "priority": "info",
+            "merchant": "Alpha ",
+            "note": "aaa",
+            "waived": False,
+        },
+        {
+            "txn_id": "x1",
+            "posted_ms": 100,
+            "priority": "RISK",
+            "merchant": "alpha",
+            "note": "bbb",
+            "waived": False,
+        },
+        {
+            "txn_id": "x1",
+            "posted_ms": 100,
+            "priority": "risk",
+            "merchant": "alpha",
+            "note": "zzz",
+            "waived": False,
+        },
+    ]
+    canonical = _canonicalize_events(events)
+    assert len(canonical) == 1
+    assert canonical[0]["priority"] == "risk"
+    assert canonical[0]["note"] == "zzz"
+    assert canonical[0]["merchant"] == "alpha"
+
+
+def test_waived_string_normalization_excludes_escalation():
+    events = [
+        {
+            "txn_id": "w1",
+            "posted_ms": 100,
+            "priority": "critical",
+            "merchant": "beta",
+            "note": "x",
+            "waived": "true",
+        },
+        {
+            "txn_id": "w2",
+            "posted_ms": 110,
+            "priority": "risk",
+            "merchant": "beta",
+            "note": "y",
+            "waived": "1",
+        },
+        {
+            "txn_id": "w3",
+            "posted_ms": 120,
+            "priority": "critical",
+            "merchant": "beta",
+            "note": "z",
+            "waived": False,
+        },
+    ]
+    flagged = _compute_flagged(events)
+    assert [row["txn_id"] for row in flagged] == ["w3"]
+
+
+def test_flagged_sort_tie_breaks_by_priority_then_txn_id():
+    events = [
+        {
+            "txn_id": "c2",
+            "posted_ms": 500,
+            "priority": "critical",
+            "merchant": "m",
+            "note": "c2",
+            "waived": False,
+        },
+        {
+            "txn_id": "r1",
+            "posted_ms": 500,
+            "priority": "risk",
+            "merchant": "m",
+            "note": "r1",
+            "waived": False,
+        },
+        {
+            "txn_id": "c1",
+            "posted_ms": 500,
+            "priority": "critical",
+            "merchant": "m",
+            "note": "c1",
+            "waived": False,
+        },
+    ]
+    flagged = _compute_flagged(events)
+    assert [row["txn_id"] for row in flagged] == ["c1", "c2", "r1"]

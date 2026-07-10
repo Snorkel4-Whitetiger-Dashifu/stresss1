@@ -107,10 +107,12 @@
     }
   },
   "canonicalization": {
-    "dedupe_by_txn_id": "collapse duplicate txn_id rows, keeping the row with the highest posted_ms",
-    "priority_normalization": "lowercase priority strings before counting and escalation",
+    "dedupe_by_txn_id": "collapse duplicate txn_id rows, keeping the row with the highest posted_ms; tie-break by higher priority rank (critical > risk > info > debug), then lexicographically larger note",
+    "priority_normalization": "strip surrounding whitespace then lowercase priority strings before counting and escalation",
+    "merchant_normalization": "strip surrounding whitespace then lowercase merchant names before grouping",
+    "waived_normalization": "treat boolean-like strings ('true','1','yes') as true",
     "total_records": "count canonical deduped records (waived rows remain in totals)",
-    "flagged_export": "include risk and critical only, exclude waived=true, sort posted_ms descending"
+    "flagged_export": "include risk and critical only, exclude waived=true, sort by posted_ms descending then priority rank descending then txn_id ascending"
   },
   "repair_audit": {
     "required_keys": [
@@ -158,7 +160,9 @@
     ],
     "required_executable_tokens": [
       ".lower(",
-      "reverse=True"
+      "reverse=True",
+      ".strip(",
+      "\"yes\""
     ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },

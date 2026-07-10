@@ -10,35 +10,70 @@ from pathlib import Path
 SCHEMA_VERSION = "settlement-rollup-v2"
 ESCALATION_PRIORITIES = {"risk", "critical"}
 PRIORITY_ORDER = ("critical", "debug", "info", "risk")
+PRIORITY_RANK = {"debug": 1, "info": 2, "risk": 3, "critical": 4}
 
 
 def load_events(path: Path) -> list[dict]:
     return json.loads(path.read_text())
 
 
+def _normalize_priority(value: object) -> str:
+    return str(value if value is not None else "").strip().lower()
+
+
+def _normalize_merchant(value: object) -> str:
+    return str(value if value is not None else "").strip().lower()
+
+
+def _normalize_waived(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return bool(value)
+
+
+def _priority_rank(priority: str) -> int:
+    return PRIORITY_RANK.get(priority, 0)
+
+
 def canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
         normalized = dict(event)
-        normalized["priority"] = str(normalized.get("priority", "")).lower()
+        normalized["priority"] = _normalize_priority(normalized.get("priority", ""))
+        normalized["merchant"] = _normalize_merchant(normalized.get("merchant", ""))
+        normalized["waived"] = _normalize_waived(normalized.get("waived", False))
         txn_id = str(normalized["txn_id"])
         current = deduped.get(txn_id)
-        if current is None or normalized["posted_ms"] > current["posted_ms"]:
+        if current is None:
+            deduped[txn_id] = normalized
+            continue
+        replace = False
+        if normalized["posted_ms"] > current["posted_ms"]:
+            replace = True
+        elif normalized["posted_ms"] == current["posted_ms"]:
+            if _priority_rank(normalized["priority"]) > _priority_rank(current["priority"]):
+                replace = True
+            elif _priority_rank(normalized["priority"]) == _priority_rank(current["priority"]):
+                if str(normalized.get("note", "")) > str(current.get("note", "")):
+                    replace = True
+        if replace:
             deduped[txn_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["posted_ms"])
 
 
 def is_escalation(event: dict) -> bool:
-    if event.get("waived") is True:
+    if _normalize_waived(event.get("waived", False)):
         return False
-    return event["priority"] in ESCALATION_PRIORITIES
+    return _normalize_priority(event.get("priority", "")) in ESCALATION_PRIORITIES
 
 
 def build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     matrix: dict[str, dict[str, int]] = {}
     for event in events:
-        merchant = str(event.get("merchant", ""))
-        priority = str(event.get("priority", ""))
+        merchant = _normalize_merchant(event.get("merchant", ""))
+        priority = _normalize_priority(event.get("priority", ""))
         matrix.setdefault(merchant, {name: 0 for name in PRIORITY_ORDER})
         if priority in matrix[merchant]:
             matrix[merchant][priority] += 1
@@ -52,10 +87,10 @@ def export_report(events: list[dict], output_dir: Path) -> None:
     priority_counts = {priority: 0 for priority in PRIORITY_ORDER}
     merchants: set[str] = set()
     for event in canonical:
-        priority = str(event.get("priority", ""))
+        priority = _normalize_priority(event.get("priority", ""))
         if priority in priority_counts:
             priority_counts[priority] += 1
-        merchants.add(str(event.get("merchant", "")))
+        merchants.add(_normalize_merchant(event.get("merchant", "")))
 
     escalations = []
     for event in canonical:
@@ -65,11 +100,15 @@ def export_report(events: list[dict], output_dir: Path) -> None:
             {
                 "txn_id": event["txn_id"],
                 "posted_ms": event["posted_ms"],
-                "priority": event["priority"],
-                "merchant": event["merchant"],
+                "priority": _normalize_priority(event["priority"]),
+                "merchant": _normalize_merchant(event["merchant"]),
                 "note": event["note"],
             }
         )
+    # Stable multi-pass sort to enforce:
+    # posted_ms desc, then priority rank desc, then txn_id asc.
+    escalations.sort(key=lambda row: str(row["txn_id"]))
+    escalations.sort(key=lambda row: _priority_rank(row["priority"]), reverse=True)
     escalations.sort(key=lambda row: row["posted_ms"], reverse=True)
 
     summary = {
@@ -83,7 +122,8 @@ def export_report(events: list[dict], output_dir: Path) -> None:
         "waived_excluded_count": sum(
             1
             for event in canonical
-            if event.get("waived") is True and event["priority"] in ESCALATION_PRIORITIES
+            if _normalize_waived(event.get("waived", False))
+            and _normalize_priority(event.get("priority", "")) in ESCALATION_PRIORITIES
         ),
     }
 
