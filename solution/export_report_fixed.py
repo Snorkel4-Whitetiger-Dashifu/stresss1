@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -163,6 +164,13 @@ def export_report(events: list[dict], output_dir: Path) -> None:
             if _normalize_waived(event.get("waived", False))
             and _normalize_priority(event.get("priority", "")) in ESCALATION_PRIORITIES
         ),
+        "canonical_fingerprint": hashlib.sha256(
+            "\n".join(
+                f"{event['txn_id']}|{event['posted_ms']}|{event['priority']}|{event['merchant']}|"
+                f"{event['note']}|{1 if _normalize_waived(event.get('waived', False)) else 0}"
+                for event in canonical
+            ).encode("utf-8")
+        ).hexdigest(),
     }
 
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

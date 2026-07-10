@@ -198,6 +198,13 @@ def _compute_summary(events: list[dict]) -> dict:
             if _normalize_waived(event.get("waived", False))
             and _normalize_priority(event.get("priority", "")) in ESCALATION_PRIORITIES
         ),
+        "canonical_fingerprint": hashlib.sha256(
+            "\n".join(
+                f"{event['txn_id']}|{event['posted_ms']}|{event['priority']}|{event['merchant']}|"
+                f"{event['note']}|{1 if _normalize_waived(event.get('waived', False)) else 0}"
+                for event in canonical
+            ).encode("utf-8")
+        ).hexdigest(),
     }
 
 
@@ -366,9 +373,11 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "merchants",
         "escalated_count",
         "waived_excluded_count",
+        "canonical_fingerprint",
     ):
         assert verified[key] == expected[key]
     assert list(verified["priority_counts"].keys()) == list(PRIORITY_ORDER)
+    assert len(verified["canonical_fingerprint"]) == 64
 
 
 def test_summary_computed_from_events(summary: dict):
@@ -474,6 +483,7 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["raw_record_count"] == alt["raw_record_count"]
     assert summary["escalated_count"] == alt["escalated_count"]
     assert summary["waived_excluded_count"] == alt["waived_excluded_count"]
+    assert summary["canonical_fingerprint"] == alt["canonical_fingerprint"]
     assert [row["txn_id"] for row in flagged] == alt["flagged_ids_desc"]
 
 

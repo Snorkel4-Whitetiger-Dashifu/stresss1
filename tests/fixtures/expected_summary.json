@@ -12,6 +12,7 @@
   "merchants": ["alpha", "beta", "gamma"],
   "escalated_count": 8,
   "waived_excluded_count": 1,
+  "canonical_fingerprint": "2f0d2e9b87c0475a334cdd870c619359e6c50b9da8b3ddbeb31d88bfb70645a6",
   "record_count": 18,
   "unique_ids": 15,
   "expected_flagged_ids_desc": ["t15", "t13", "t10", "t09", "t07", "t06", "t02", "t01"],
@@ -47,6 +48,7 @@
       "risk": 1
     },
     "merchants": ["delta"],
+    "canonical_fingerprint": "38ce8661a6796efd15e7ff8435854efb03647764f0392223aeb65378e66ca1da",
     "flagged_ids_desc": ["a4", "a2"],
     "flagged_posted_ms_desc": [150, 120]
   }

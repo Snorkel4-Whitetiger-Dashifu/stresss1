@@ -97,7 +97,8 @@
         "priority_counts",
         "merchants",
         "escalated_count",
-        "waived_excluded_count"
+        "waived_excluded_count",
+        "canonical_fingerprint"
       ]
     },
     "output_paths": {
@@ -173,7 +174,8 @@
   "outputs": {
     "summary_json": {
       "schema_version": "settlement-rollup-v2",
-      "priority_counts_key_order": ["critical", "debug", "info", "risk"]
+      "priority_counts_key_order": ["critical", "debug", "info", "risk"],
+      "canonical_fingerprint": "sha256 over canonical rows joined by newline where each row is txn_id|posted_ms|priority|merchant|note|waived_int and waived_int is 1 or 0"
     },
     "service_matrix_json": {
       "description": "Flat map of merchant -> per-priority counts from canonical deduped records.",
