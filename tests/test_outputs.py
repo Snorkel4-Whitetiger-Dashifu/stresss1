@@ -81,6 +81,26 @@ def _normalize_merchant(value: object) -> str:
     return str(value if value is not None else "").strip().lower()
 
 
+def _normalize_posted_ms(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        try:
+            return int(text)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _normalize_note(value: object) -> str:
+    return " ".join(str(value if value is not None else "").split())
+
+
 def _normalize_waived(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -97,9 +117,11 @@ def _canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
         normalized = dict(event)
+        normalized["posted_ms"] = _normalize_posted_ms(normalized.get("posted_ms", 0))
         normalized["priority"] = _normalize_priority(normalized.get("priority", ""))
         normalized["merchant"] = _normalize_merchant(normalized.get("merchant", ""))
         normalized["waived"] = _normalize_waived(normalized.get("waived", False))
+        normalized["note"] = _normalize_note(normalized.get("note", ""))
         txn_id = str(normalized["txn_id"])
         current = deduped.get(txn_id)
         if current is None:
@@ -112,8 +134,24 @@ def _canonicalize_events(events: list[dict]) -> list[dict]:
             if _priority_rank(normalized["priority"]) > _priority_rank(current["priority"]):
                 replace = True
             elif _priority_rank(normalized["priority"]) == _priority_rank(current["priority"]):
-                if str(normalized.get("note", "")) > str(current.get("note", "")):
+                if int(_normalize_waived(normalized.get("waived", False))) < int(
+                    _normalize_waived(current.get("waived", False))
+                ):
                     replace = True
+                elif int(_normalize_waived(normalized.get("waived", False))) == int(
+                    _normalize_waived(current.get("waived", False))
+                ):
+                    if _normalize_note(normalized.get("note", "")) > _normalize_note(
+                        current.get("note", "")
+                    ):
+                        replace = True
+                    elif _normalize_note(normalized.get("note", "")) == _normalize_note(
+                        current.get("note", "")
+                    ):
+                        if _normalize_merchant(normalized.get("merchant", "")) > _normalize_merchant(
+                            current.get("merchant", "")
+                        ):
+                            replace = True
         if replace:
             deduped[txn_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["posted_ms"])
@@ -174,7 +212,7 @@ def _compute_flagged(events: list[dict]) -> list[dict]:
                 "posted_ms": event["posted_ms"],
                 "priority": _normalize_priority(event["priority"]),
                 "merchant": _normalize_merchant(event["merchant"]),
-                "note": event["note"],
+                "note": _normalize_note(event["note"]),
             }
         )
     rows.sort(
@@ -596,3 +634,91 @@ def test_flagged_sort_tie_breaks_by_priority_then_txn_id():
     ]
     flagged = _compute_flagged(events)
     assert [row["txn_id"] for row in flagged] == ["c1", "c2", "r1"]
+
+
+def test_pipeline_coerces_posted_ms_and_normalizes_outputs(tmp_path_factory):
+    events = [
+        {
+            "txn_id": "p1",
+            "posted_ms": " 200 ",
+            "priority": " CRITICAL ",
+            "merchant": " Acme ",
+            "note": "  first  note ",
+            "waived": "no",
+        },
+        {
+            "txn_id": "p2",
+            "posted_ms": "not-a-number",
+            "priority": "risk",
+            "merchant": "acme",
+            "note": "second",
+            "waived": False,
+        },
+        {
+            "txn_id": "p3",
+            "posted_ms": 150,
+            "priority": "risk",
+            "merchant": "acme",
+            "note": "waived row",
+            "waived": "yes",
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("coerce") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("coerce_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    summary = json.loads((out_dir / "summary.json").read_text())
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    matrix = json.loads((out_dir / "service_matrix.json").read_text())
+
+    assert summary["merchants"] == ["acme"]
+    assert summary["escalated_count"] == 2
+    assert summary["waived_excluded_count"] == 1
+    assert [row["txn_id"] for row in flagged] == ["p1", "p2"]
+    assert [row["posted_ms"] for row in flagged] == [200, 0]
+    assert flagged[0]["note"] == "first note"
+    assert matrix == {"acme": {"critical": 1, "debug": 0, "info": 0, "risk": 2}}
+
+
+def test_pipeline_dedupe_tie_break_prefers_non_waived_then_note(tmp_path_factory):
+    events = [
+        {
+            "txn_id": "d1",
+            "posted_ms": 100,
+            "priority": "risk",
+            "merchant": "m",
+            "note": "zzz",
+            "waived": "yes",
+        },
+        {
+            "txn_id": "d1",
+            "posted_ms": 100,
+            "priority": "risk",
+            "merchant": "m",
+            "note": "aaa",
+            "waived": False,
+        },
+        {
+            "txn_id": "d1",
+            "posted_ms": 100,
+            "priority": "risk",
+            "merchant": "m",
+            "note": "bbb",
+            "waived": "0",
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("dedupe") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("dedupe_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    summary = json.loads((out_dir / "summary.json").read_text())
+
+    assert summary["total_records"] == 1
+    assert summary["waived_excluded_count"] == 0
+    assert [row["txn_id"] for row in flagged] == ["d1"]
+    assert flagged[0]["note"] == "bbb"

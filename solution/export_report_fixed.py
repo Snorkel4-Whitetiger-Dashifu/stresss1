@@ -25,6 +25,26 @@ def _normalize_merchant(value: object) -> str:
     return str(value if value is not None else "").strip().lower()
 
 
+def _normalize_posted_ms(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        try:
+            return int(text)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _normalize_note(value: object) -> str:
+    return " ".join(str(value if value is not None else "").split())
+
+
 def _normalize_waived(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -41,9 +61,11 @@ def canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
         normalized = dict(event)
+        normalized["posted_ms"] = _normalize_posted_ms(normalized.get("posted_ms", 0))
         normalized["priority"] = _normalize_priority(normalized.get("priority", ""))
         normalized["merchant"] = _normalize_merchant(normalized.get("merchant", ""))
         normalized["waived"] = _normalize_waived(normalized.get("waived", False))
+        normalized["note"] = _normalize_note(normalized.get("note", ""))
         txn_id = str(normalized["txn_id"])
         current = deduped.get(txn_id)
         if current is None:
@@ -56,8 +78,24 @@ def canonicalize_events(events: list[dict]) -> list[dict]:
             if _priority_rank(normalized["priority"]) > _priority_rank(current["priority"]):
                 replace = True
             elif _priority_rank(normalized["priority"]) == _priority_rank(current["priority"]):
-                if str(normalized.get("note", "")) > str(current.get("note", "")):
+                if int(_normalize_waived(normalized.get("waived", False))) < int(
+                    _normalize_waived(current.get("waived", False))
+                ):
                     replace = True
+                elif int(_normalize_waived(normalized.get("waived", False))) == int(
+                    _normalize_waived(current.get("waived", False))
+                ):
+                    if _normalize_note(normalized.get("note", "")) > _normalize_note(
+                        current.get("note", "")
+                    ):
+                        replace = True
+                    elif _normalize_note(normalized.get("note", "")) == _normalize_note(
+                        current.get("note", "")
+                    ):
+                        if _normalize_merchant(normalized.get("merchant", "")) > _normalize_merchant(
+                            current.get("merchant", "")
+                        ):
+                            replace = True
         if replace:
             deduped[txn_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["posted_ms"])
@@ -102,7 +140,7 @@ def export_report(events: list[dict], output_dir: Path) -> None:
                 "posted_ms": event["posted_ms"],
                 "priority": _normalize_priority(event["priority"]),
                 "merchant": _normalize_merchant(event["merchant"]),
-                "note": event["note"],
+                "note": _normalize_note(event["note"]),
             }
         )
     # Stable multi-pass sort to enforce:

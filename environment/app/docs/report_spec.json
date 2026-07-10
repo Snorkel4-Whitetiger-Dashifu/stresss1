@@ -107,7 +107,9 @@
     }
   },
   "canonicalization": {
-    "dedupe_by_txn_id": "collapse duplicate txn_id rows, keeping the row with the highest posted_ms; tie-break by higher priority rank (critical > risk > info > debug), then lexicographically larger note",
+    "dedupe_by_txn_id": "collapse duplicate txn_id rows, keeping the row with the highest posted_ms; if posted_ms ties, choose higher priority rank (critical > risk > info > debug); if still tied, prefer waived=false over waived=true; if still tied, choose lexicographically larger normalized note, then lexicographically larger normalized merchant",
+    "posted_ms_normalization": "coerce posted_ms to int (trim string whitespace before int conversion; invalid values become 0)",
+    "note_normalization": "normalize notes by collapsing internal whitespace to single spaces before tie-breaks and output",
     "priority_normalization": "strip surrounding whitespace then lowercase priority strings before counting and escalation",
     "merchant_normalization": "strip surrounding whitespace then lowercase merchant names before grouping",
     "waived_normalization": "treat boolean-like strings ('true','1','yes') as true",
@@ -123,6 +125,7 @@
       "post_repair"
     ],
     "processing_steps": [
+      "normalize_posted_ms",
       "normalize_priority",
       "dedupe_txn_id",
       "filter_waived",
@@ -159,6 +162,7 @@
       "priority == \"critical\""
     ],
     "required_executable_tokens": [
+      "int(",
       ".lower(",
       "reverse=True",
       ".strip(",
