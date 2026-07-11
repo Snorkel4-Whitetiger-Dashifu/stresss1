@@ -12,19 +12,19 @@
   "merchants": ["alpha", "beta", "gamma"],
   "escalated_count": 8,
   "waived_excluded_count": 1,
-  "canonical_fingerprint": "2f0d2e9b87c0475a334cdd870c619359e6c50b9da8b3ddbeb31d88bfb70645a6",
+  "canonical_fingerprint": "71b006f252718423b3a84a481dab7e4703f3cb16fca15b5dec1e5cb14d4b3eb1",
   "record_count": 18,
   "unique_ids": 15,
-  "expected_flagged_ids_desc": ["t15", "t13", "t10", "t09", "t07", "t06", "t02", "t01"],
+  "expected_flagged_ids_desc": ["t15", "t10", "t01", "t09", "t07", "t13", "t02", "t06"],
   "expected_flagged_ts_ms_desc": [
     1800000009000,
-    1800000008600,
     1800000007000,
+    1800000006400,
     1800000006200,
     1800000005000,
-    1800000004500,
+    1800000003300,
     1800000002200,
-    1800000001000
+    1800000001200
   ],
   "expected_service_matrix": {
     "alpha": {"critical": 2, "debug": 1, "info": 1, "risk": 1},

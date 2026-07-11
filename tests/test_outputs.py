@@ -154,7 +154,7 @@ def _canonicalize_events(events: list[dict]) -> list[dict]:
                             replace = True
         if replace:
             deduped[txn_id] = normalized
-    return sorted(deduped.values(), key=lambda row: row["posted_ms"])
+    return sorted(deduped.values(), key=lambda row: (row["posted_ms"], str(row["txn_id"])))
 
 
 def _is_escalation(event: dict) -> bool:
@@ -732,3 +732,53 @@ def test_pipeline_dedupe_tie_break_prefers_non_waived_then_note(tmp_path_factory
     assert summary["waived_excluded_count"] == 0
     assert [row["txn_id"] for row in flagged] == ["d1"]
     assert flagged[0]["note"] == "bbb"
+
+
+def test_canonical_fingerprint_uses_posted_ms_then_txn_id_order(tmp_path_factory):
+    events = [
+        {
+            "txn_id": "z9",
+            "posted_ms": 500,
+            "priority": "critical",
+            "merchant": "m",
+            "note": "late",
+            "waived": False,
+        },
+        {
+            "txn_id": "a1",
+            "posted_ms": 100,
+            "priority": "info",
+            "merchant": "m",
+            "note": "early",
+            "waived": False,
+        },
+        {
+            "txn_id": "c3",
+            "posted_ms": 500,
+            "priority": "risk",
+            "merchant": "m",
+            "note": "same-ms-a",
+            "waived": False,
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("fingerprint_order") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("fingerprint_order_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    summary = json.loads((out_dir / "summary.json").read_text())
+    canonical = _canonicalize_events(events)
+    assert [(row["posted_ms"], row["txn_id"]) for row in canonical] == [
+        (100, "a1"),
+        (500, "c3"),
+        (500, "z9"),
+    ]
+    expected_fingerprint = hashlib.sha256(
+        "\n".join(
+            f"{row['txn_id']}|{row['posted_ms']}|{row['priority']}|{row['merchant']}|"
+            f"{row['note']}|{1 if _normalize_waived(row.get('waived', False)) else 0}"
+            for row in canonical
+        ).encode("utf-8")
+    ).hexdigest()
+    assert summary["canonical_fingerprint"] == expected_fingerprint

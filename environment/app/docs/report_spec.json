@@ -1,6 +1,6 @@
 {
   "title": "Settlement Rollup — Diagnosis & Report Spec",
-  "version": "3.3",
+  "version": "3.4",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -114,6 +114,7 @@
     "priority_normalization": "strip surrounding whitespace then lowercase priority strings before counting and escalation",
     "merchant_normalization": "strip surrounding whitespace then lowercase merchant names before grouping",
     "waived_normalization": "treat boolean-like strings ('true','1','yes') as true",
+    "canonical_order": "after dedupe, canonical rows are sorted by posted_ms ascending, then txn_id ascending",
     "total_records": "count canonical deduped records (waived rows remain in totals)",
     "flagged_export": "include risk and critical only, exclude waived=true, sort by posted_ms descending then priority rank descending then txn_id ascending"
   },
@@ -175,7 +176,7 @@
     "summary_json": {
       "schema_version": "settlement-rollup-v2",
       "priority_counts_key_order": ["critical", "debug", "info", "risk"],
-      "canonical_fingerprint": "sha256 over canonical rows joined by newline where each row is txn_id|posted_ms|priority|merchant|note|waived_int and waived_int is 1 or 0"
+      "canonical_fingerprint": "sha256 over canonical rows in canonical_order joined by newline where each row is txn_id|posted_ms|priority|merchant|note|waived_int and waived_int is 1 or 0"
     },
     "service_matrix_json": {
       "description": "Flat map of merchant -> per-priority counts from canonical deduped records.",

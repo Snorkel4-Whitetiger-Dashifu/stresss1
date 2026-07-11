@@ -99,7 +99,7 @@ def canonicalize_events(events: list[dict]) -> list[dict]:
                             replace = True
         if replace:
             deduped[txn_id] = normalized
-    return sorted(deduped.values(), key=lambda row: row["posted_ms"])
+    return sorted(deduped.values(), key=lambda row: (row["posted_ms"], str(row["txn_id"])))
 
 
 def is_escalation(event: dict) -> bool:
