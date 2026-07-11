@@ -5,7 +5,7 @@
   {"txn_id": "t03", "posted_ms": 1800000002500, "priority": "info", "merchant": "alpha", "note": "rollup complete", "waived": false},
   {"txn_id": "t04", "posted_ms": 1800000003000, "priority": "info", "merchant": "beta", "note": "late posting notice", "waived": false},
   {"txn_id": "t05", "posted_ms": 1800000003400, "priority": "info", "merchant": "gamma", "note": "manual annotation", "waived": false},
-  {"txn_id": "t06", "posted_ms": 1800000001200, "priority": "risk", "merchant": "alpha", "note": "split settlement mismatch", "waived": false},
+  {"txn_id": "t06", "posted_ms": 1800000001200, "priority": "risk", "merchant": "alpha-pay", "note": "split settlement mismatch", "waived": false},
   {"txn_id": "t07", "posted_ms": 1800000005000, "priority": "Critical", "merchant": "gamma", "note": "gateway reversal", "waived": false},
   {"txn_id": "t08", "posted_ms": 1800000005400, "priority": "RISK", "merchant": "beta", "note": "temporary escalation", "waived": false},
   {"txn_id": "t08", "posted_ms": 1800000005600, "priority": "info", "merchant": "beta", "note": "resolved after replay", "waived": false},
@@ -14,7 +14,7 @@
   {"txn_id": "t10", "posted_ms": 1800000007000, "priority": "critical", "merchant": "alpha", "note": "stale ledger pointer replay", "waived": false},
   {"txn_id": "t11", "posted_ms": 1800000007300, "priority": "debug", "merchant": "alpha", "note": "diagnostic trace", "waived": false},
   {"txn_id": "t12", "posted_ms": 1800000007800, "priority": "critical", "merchant": "beta", "note": "analyst-waived test alert", "waived": true},
-  {"txn_id": "t13", "posted_ms": 1800000003300, "priority": "risk", "merchant": "gamma", "note": "high dispute ratio", "waived": false},
-  {"txn_id": "t14", "posted_ms": 1800000008800, "priority": "info", "merchant": "beta", "note": "batch closed", "waived": false},
+  {"txn_id": "t13", "posted_ms": 1800000003300, "priority": "risk", "merchant": "gamma_ops", "note": "high dispute ratio", "waived": false},
+  {"txn_id": "t14", "posted_ms": 1800000008800, "priority": "info", "merchant": "beta-store", "note": "batch closed", "waived": false},
   {"txn_id": "t15", "posted_ms": 1800000009000, "priority": "critical", "merchant": "gamma", "note": "terminal rollback", "waived": false}
 ]

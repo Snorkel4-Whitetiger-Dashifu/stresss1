@@ -36,6 +36,11 @@ REQUIRED_TOKENS = tuple(SPEC_DATA["workflow_repair"]["required_executable_tokens
 ESCALATION_PRIORITIES = {"risk", "critical"}
 PRIORITY_ORDER = ("critical", "debug", "info", "risk")
 PRIORITY_RANK = {"debug": 1, "info": 2, "risk": 3, "critical": 4}
+MERCHANT_ALIASES = {
+    "alpha-pay": "alpha",
+    "beta-store": "beta",
+    "gamma_ops": "gamma",
+}
 
 
 def _normalize_ws(text: str) -> str:
@@ -78,7 +83,8 @@ def _normalize_priority(value: object) -> str:
 
 
 def _normalize_merchant(value: object) -> str:
-    return str(value if value is not None else "").strip().lower()
+    merchant = str(value if value is not None else "").strip().lower()
+    return MERCHANT_ALIASES.get(merchant, merchant)
 
 
 def _normalize_posted_ms(value: object) -> int:
@@ -205,6 +211,12 @@ def _compute_summary(events: list[dict]) -> dict:
                 for event in canonical
             ).encode("utf-8")
         ).hexdigest(),
+        "escalation_checksum": hashlib.sha256(
+            "\n".join(
+                f"{row['txn_id']}|{row['posted_ms']}|{row['priority']}|{row['merchant']}|{row['note']}"
+                for row in escalations
+            ).encode("utf-8")
+        ).hexdigest(),
     }
 
 
@@ -226,6 +238,7 @@ def _compute_flagged(events: list[dict]) -> list[dict]:
         key=lambda row: (
             -row["posted_ms"],
             -_priority_rank(row["priority"]),
+            str(row["merchant"]),
             str(row["txn_id"]),
         )
     )
@@ -374,10 +387,12 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "escalated_count",
         "waived_excluded_count",
         "canonical_fingerprint",
+        "escalation_checksum",
     ):
         assert verified[key] == expected[key]
     assert list(verified["priority_counts"].keys()) == list(PRIORITY_ORDER)
     assert len(verified["canonical_fingerprint"]) == 64
+    assert len(verified["escalation_checksum"]) == 64
 
 
 def test_summary_computed_from_events(summary: dict):
@@ -484,6 +499,7 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["escalated_count"] == alt["escalated_count"]
     assert summary["waived_excluded_count"] == alt["waived_excluded_count"]
     assert summary["canonical_fingerprint"] == alt["canonical_fingerprint"]
+    assert summary["escalation_checksum"] == alt["escalation_checksum"]
     assert [row["txn_id"] for row in flagged] == alt["flagged_ids_desc"]
 
 
@@ -615,13 +631,13 @@ def test_waived_string_normalization_excludes_escalation():
     assert [row["txn_id"] for row in flagged] == ["w3"]
 
 
-def test_flagged_sort_tie_breaks_by_priority_then_txn_id():
+def test_flagged_sort_tie_breaks_by_priority_then_merchant_then_txn_id():
     events = [
         {
             "txn_id": "c2",
             "posted_ms": 500,
             "priority": "critical",
-            "merchant": "m",
+            "merchant": "zzz",
             "note": "c2",
             "waived": False,
         },
@@ -637,7 +653,7 @@ def test_flagged_sort_tie_breaks_by_priority_then_txn_id():
             "txn_id": "c1",
             "posted_ms": 500,
             "priority": "critical",
-            "merchant": "m",
+            "merchant": "aaa",
             "note": "c1",
             "waived": False,
         },
@@ -690,6 +706,48 @@ def test_pipeline_coerces_posted_ms_and_normalizes_outputs(tmp_path_factory):
     assert [row["posted_ms"] for row in flagged] == [200, 0]
     assert flagged[0]["note"] == "first note"
     assert matrix == {"acme": {"critical": 1, "debug": 0, "info": 0, "risk": 2}}
+
+
+def test_merchant_alias_normalization_is_exercised(tmp_path_factory):
+    events = [
+        {
+            "txn_id": "m1",
+            "posted_ms": 100,
+            "priority": "critical",
+            "merchant": " Alpha-Pay ",
+            "note": "a",
+            "waived": False,
+        },
+        {
+            "txn_id": "m2",
+            "posted_ms": 200,
+            "priority": "risk",
+            "merchant": "beta-store",
+            "note": "b",
+            "waived": False,
+        },
+        {
+            "txn_id": "m3",
+            "posted_ms": 300,
+            "priority": "info",
+            "merchant": "gamma_ops",
+            "note": "c",
+            "waived": False,
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("merchant_alias") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("merchant_alias_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+    summary = json.loads((out_dir / "summary.json").read_text())
+    matrix = json.loads((out_dir / "service_matrix.json").read_text())
+    assert summary["merchants"] == ["alpha", "beta", "gamma"]
+    assert matrix == {
+        "alpha": {"critical": 1, "debug": 0, "info": 0, "risk": 0},
+        "beta": {"critical": 0, "debug": 0, "info": 0, "risk": 1},
+        "gamma": {"critical": 0, "debug": 0, "info": 1, "risk": 0},
+    }
 
 
 def test_pipeline_dedupe_tie_break_prefers_non_waived_then_note(tmp_path_factory):
@@ -782,3 +840,46 @@ def test_canonical_fingerprint_uses_posted_ms_then_txn_id_order(tmp_path_factory
         ).encode("utf-8")
     ).hexdigest()
     assert summary["canonical_fingerprint"] == expected_fingerprint
+
+
+def test_primary_fixture_does_not_mask_canonical_order():
+    events = _load_events(INPUT_PATH)
+    canonical = _canonicalize_events(events)
+    by_txn = [row["txn_id"] for row in sorted(canonical, key=lambda row: str(row["txn_id"]))]
+    by_canonical = [row["txn_id"] for row in canonical]
+    assert by_canonical != by_txn
+
+
+def test_escalation_checksum_matches_final_flagged_order(tmp_path_factory):
+    events = [
+        {
+            "txn_id": "e1",
+            "posted_ms": 900,
+            "priority": "critical",
+            "merchant": "beta-store",
+            "note": "top",
+            "waived": False,
+        },
+        {
+            "txn_id": "e2",
+            "posted_ms": 900,
+            "priority": "critical",
+            "merchant": "alpha-pay",
+            "note": "top",
+            "waived": False,
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("escalation_checksum") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("escalation_checksum_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+    summary = json.loads((out_dir / "summary.json").read_text())
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    expected = hashlib.sha256(
+        "\n".join(
+            f"{row['txn_id']}|{row['posted_ms']}|{row['priority']}|{row['merchant']}|{row['note']}"
+            for row in flagged
+        ).encode("utf-8")
+    ).hexdigest()
+    assert summary["escalation_checksum"] == expected

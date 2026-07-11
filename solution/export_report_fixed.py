@@ -12,6 +12,11 @@ SCHEMA_VERSION = "settlement-rollup-v2"
 ESCALATION_PRIORITIES = {"risk", "critical"}
 PRIORITY_ORDER = ("critical", "debug", "info", "risk")
 PRIORITY_RANK = {"debug": 1, "info": 2, "risk": 3, "critical": 4}
+MERCHANT_ALIASES = {
+    "alpha-pay": "alpha",
+    "beta-store": "beta",
+    "gamma_ops": "gamma",
+}
 
 
 def load_events(path: Path) -> list[dict]:
@@ -23,7 +28,8 @@ def _normalize_priority(value: object) -> str:
 
 
 def _normalize_merchant(value: object) -> str:
-    return str(value if value is not None else "").strip().lower()
+    merchant = str(value if value is not None else "").strip().lower()
+    return MERCHANT_ALIASES.get(merchant, merchant)
 
 
 def _normalize_posted_ms(value: object) -> int:
@@ -145,8 +151,9 @@ def export_report(events: list[dict], output_dir: Path) -> None:
             }
         )
     # Stable multi-pass sort to enforce:
-    # posted_ms desc, then priority rank desc, then txn_id asc.
+    # posted_ms desc, then priority rank desc, then merchant asc, then txn_id asc.
     escalations.sort(key=lambda row: str(row["txn_id"]))
+    escalations.sort(key=lambda row: str(row["merchant"]))
     escalations.sort(key=lambda row: _priority_rank(row["priority"]), reverse=True)
     escalations.sort(key=lambda row: row["posted_ms"], reverse=True)
 
@@ -169,6 +176,12 @@ def export_report(events: list[dict], output_dir: Path) -> None:
                 f"{event['txn_id']}|{event['posted_ms']}|{event['priority']}|{event['merchant']}|"
                 f"{event['note']}|{1 if _normalize_waived(event.get('waived', False)) else 0}"
                 for event in canonical
+            ).encode("utf-8")
+        ).hexdigest(),
+        "escalation_checksum": hashlib.sha256(
+            "\n".join(
+                f"{row['txn_id']}|{row['posted_ms']}|{row['priority']}|{row['merchant']}|{row['note']}"
+                for row in escalations
             ).encode("utf-8")
         ).hexdigest(),
     }
