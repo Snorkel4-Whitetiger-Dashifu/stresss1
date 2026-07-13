@@ -85,7 +85,13 @@
     },
     "input_stats": {
       "required_fields": ["record_count", "unique_txn_ids", "merchants"],
+      "exact_schema": {
+        "record_count": "integer count of raw rows from /app/data/events.json",
+        "unique_txn_ids": "integer count of distinct str(txn_id) values in the raw rows",
+        "merchants": "array of distinct canonical merchant strings from raw rows, sorted ascending"
+      },
       "merchants_sort": "ascending alphabetical",
+      "merchants_normalization": "apply canonicalization.merchant_normalization, including trim/lowercase and aliases alpha-pay->alpha, beta-store->beta, gamma_ops->gamma, before deduplicating and sorting input_stats.merchants",
       "source_events_path": "/app/data/events.json"
     },
     "verified_summary": {

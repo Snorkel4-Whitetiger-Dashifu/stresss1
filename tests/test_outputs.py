@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -24,9 +25,9 @@ ORIGINAL_PIPELINE = Path("/app/workflow/.export_report.original")
 DOSSIER_PATH = Path("/app/incident/export_dossier.md")
 INPUT_PATH = Path("/app/data/events.json")
 REPORT_SPEC_PATH = Path("/app/docs/report_spec.json")
-FIXTURES = Path("/tests/fixtures/expected_summary.json")
+ALT_INPUT = Path("/tests/fixtures/alt_events.json")
+BROKEN_PIPELINE_SHA256 = "98c75e8fcb037ee3e68349973a60f44f0068dba45de632ffe4089f8c2f76ca3d"
 SPEC_DATA = json.loads(REPORT_SPEC_PATH.read_text())
-FIXTURE_DATA = json.loads(FIXTURES.read_text())
 ISSUE_EVIDENCE_TERMS = SPEC_DATA["diagnosis_report"]["issues_found_item"]["evidence"][
     "required_terms_by_issue"
 ]
@@ -276,7 +277,28 @@ def _flagged_rows(path: Path = FLAGGED_PATH) -> list[dict]:
 
 @pytest.fixture(scope="module")
 def expected() -> dict:
-    return FIXTURE_DATA
+    events = _load_events(INPUT_PATH)
+    summary = _compute_summary(events)
+    flagged = _compute_flagged(events)
+    alternate_events = _load_events(ALT_INPUT)
+    alternate_summary = _compute_summary(alternate_events)
+    alternate_flagged = _compute_flagged(alternate_events)
+    return {
+        **summary,
+        "record_count": len(events),
+        "unique_ids": len({str(event["txn_id"]) for event in events}),
+        "expected_service_matrix": _build_service_matrix(
+            _canonicalize_events(events)
+        ),
+        "expected_flagged_ids_desc": [row["txn_id"] for row in flagged],
+        "expected_flagged_ts_ms_desc": [row["posted_ms"] for row in flagged],
+        "broken_pipeline_sha256": BROKEN_PIPELINE_SHA256,
+        "alternate_input": str(ALT_INPUT),
+        "alternate_expected": {
+            **alternate_summary,
+            "flagged_ids_desc": [row["txn_id"] for row in alternate_flagged],
+        },
+    }
 
 
 @pytest.fixture(scope="module")
@@ -370,12 +392,15 @@ def test_dossier_quotes_are_verbatim(diagnosis: dict, dossier_text: str):
 
 def test_input_stats(diagnosis: dict, expected: dict):
     stats = diagnosis["input_stats"]
+    assert set(stats) == {"record_count", "unique_txn_ids", "merchants"}
     assert stats["record_count"] == expected["record_count"]
     assert stats["unique_txn_ids"] == expected["unique_ids"]
     assert stats["merchants"] == expected["merchants"]
 
 
-def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
+def test_verified_summary_matches_independent_computation(
+    diagnosis: dict, expected: dict
+):
     verified = diagnosis["verified_summary"]
     for key in (
         "schema_version",
@@ -399,7 +424,7 @@ def test_summary_computed_from_events(summary: dict):
     assert summary == _compute_summary(_load_events(INPUT_PATH))
 
 
-def test_service_matrix_matches_fixture(expected: dict):
+def test_service_matrix_matches_independent_computation(expected: dict):
     matrix = json.loads(MATRIX_PATH.read_text())
     assert matrix == expected["expected_service_matrix"]
     assert matrix == _build_service_matrix(_canonicalize_events(_load_events(INPUT_PATH)))
@@ -447,8 +472,8 @@ def test_broken_snapshot_produces_wrong_export(expected: dict):
         assert result.returncode == 0, result.stderr
         summary = json.loads((out / "summary.json").read_text())
         flagged = _flagged_rows(out / "flagged.jsonl")
-        assert summary["escalated_count"] == expected["broken_flagged_count"]
-        assert [row["txn_id"] for row in flagged] == expected["broken_flagged_ids_asc"]
+        assert summary != _compute_summary(_load_events(INPUT_PATH))
+        assert flagged != _compute_flagged(_load_events(INPUT_PATH))
         assert all(row["posted_ms"] == 0 for row in flagged)
 
 
@@ -459,6 +484,73 @@ def test_pipeline_patched():
         assert token not in code
     for token in REQUIRED_TOKENS:
         assert token in code
+
+
+def test_repaired_sources_do_not_reference_verifier_artifacts():
+    for source_path in (PIPELINE, CLI):
+        source = source_path.read_text()
+        for token in (
+            "/tests",
+            "expected_summary.json",
+            "test_outputs.py",
+        ):
+            assert token not in source
+
+
+def test_repair_runtime_does_not_read_tests_tree():
+    with tempfile.TemporaryDirectory() as tmp:
+        guard_path = Path(tmp) / "sitecustomize.py"
+        guard_path.write_text(
+            "\n".join(
+                [
+                    "import builtins",
+                    "from pathlib import Path",
+                    "_orig_open = builtins.open",
+                    "_orig_read_text = Path.read_text",
+                    "_orig_read_bytes = Path.read_bytes",
+                    "def _blocked(value):",
+                    "    try:",
+                    "        return '/tests' in str(Path(value).resolve())",
+                    "    except Exception:",
+                    "        return False",
+                    "def _guarded_open(file, *args, **kwargs):",
+                    "    if _blocked(file):",
+                    "        raise PermissionError(f'blocked verifier-tree read: {file}')",
+                    "    return _orig_open(file, *args, **kwargs)",
+                    "def _guarded_read_text(self, *args, **kwargs):",
+                    "    if _blocked(self):",
+                    "        raise PermissionError(f'blocked verifier-tree read: {self}')",
+                    "    return _orig_read_text(self, *args, **kwargs)",
+                    "def _guarded_read_bytes(self, *args, **kwargs):",
+                    "    if _blocked(self):",
+                    "        raise PermissionError(f'blocked verifier-tree read: {self}')",
+                    "    return _orig_read_bytes(self, *args, **kwargs)",
+                    "builtins.open = _guarded_open",
+                    "Path.read_text = _guarded_read_text",
+                    "Path.read_bytes = _guarded_read_bytes",
+                ]
+            )
+            + "\n"
+        )
+        output_dir = Path(tmp) / "repair-output"
+        env = dict(os.environ)
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = f"{tmp}:{existing}" if existing else tmp
+        result = subprocess.run(
+            [
+                "python3",
+                str(CLI),
+                "repair",
+                "--output-dir",
+                str(output_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        assert (output_dir / "summary.json").exists()
 
 
 def test_repair_audit(diagnosis: dict, expected: dict, summary: dict):
@@ -842,7 +934,7 @@ def test_canonical_fingerprint_uses_posted_ms_then_txn_id_order(tmp_path_factory
     assert summary["canonical_fingerprint"] == expected_fingerprint
 
 
-def test_primary_fixture_does_not_mask_canonical_order():
+def test_primary_data_does_not_mask_canonical_order():
     events = _load_events(INPUT_PATH)
     canonical = _canonicalize_events(events)
     by_txn = [row["txn_id"] for row in sorted(canonical, key=lambda row: str(row["txn_id"]))]
