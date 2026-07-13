@@ -633,6 +633,29 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
         assert quote in dossier_text
 
 
+def test_diagnose_rejects_separate_input_flag(tmp_path_factory):
+    report = tmp_path_factory.mktemp("diagnose-interface") / "diagnosis.json"
+    result = subprocess.run(
+        [
+            "python3",
+            str(CLI),
+            "diagnose",
+            "--dossier",
+            str(DOSSIER_PATH),
+            "--report",
+            str(report),
+            "--input",
+            str(INPUT_PATH),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode != 0
+    assert "unrecognized arguments: --input" in result.stderr
+    assert not report.exists()
+
+
 def test_repair_supports_custom_output_dir(tmp_path_factory, expected: dict):
     custom_dir = tmp_path_factory.mktemp("custom_output")
     current = PIPELINE.read_text()
