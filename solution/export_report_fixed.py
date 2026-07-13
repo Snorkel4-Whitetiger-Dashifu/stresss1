@@ -65,6 +65,26 @@ def _priority_rank(priority: str) -> int:
     return PRIORITY_RANK.get(priority, 0)
 
 
+def _replay_lineage(events: list[dict]) -> dict[str, dict[str, int]]:
+    grouped: dict[str, list[int]] = {}
+    for event in events:
+        txn_id = str(event["txn_id"])
+        grouped.setdefault(txn_id, []).append(_normalize_posted_ms(event.get("posted_ms", 0)))
+    lineage: dict[str, dict[str, int]] = {}
+    for txn_id, posted_values in grouped.items():
+        replay_depth = max(0, len(posted_values) - 1)
+        replay_span_ms = max(posted_values) - min(posted_values) if posted_values else 0
+        lineage[txn_id] = {
+            "replay_depth": replay_depth,
+            "replay_span_ms": replay_span_ms,
+        }
+    return lineage
+
+
+def _lineage_pressure_score(replay_depth: int, replay_span_ms: int) -> int:
+    return replay_depth * 12 + (replay_span_ms // 500)
+
+
 def canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
@@ -128,6 +148,7 @@ def build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
 
 def export_report(events: list[dict], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    lineage = _replay_lineage(events)
     canonical = canonicalize_events(events)
 
     priority_counts = {priority: 0 for priority in PRIORITY_ORDER}
@@ -142,6 +163,9 @@ def export_report(events: list[dict], output_dir: Path) -> None:
     for event in canonical:
         if not is_escalation(event):
             continue
+        txn_id = str(event["txn_id"])
+        replay_depth = lineage[txn_id]["replay_depth"]
+        replay_span_ms = lineage[txn_id]["replay_span_ms"]
         escalations.append(
             {
                 "txn_id": event["txn_id"],
@@ -149,14 +173,22 @@ def export_report(events: list[dict], output_dir: Path) -> None:
                 "priority": _normalize_priority(event["priority"]),
                 "merchant": _normalize_merchant(event["merchant"]),
                 "note": _normalize_note(event["note"]),
+                "replay_depth": replay_depth,
+                "lineage_pressure_score": _lineage_pressure_score(
+                    replay_depth, replay_span_ms
+                ),
             }
         )
-    # Stable multi-pass sort to enforce:
-    # posted_ms desc, then priority rank desc, then merchant asc, then txn_id asc.
     escalations.sort(key=lambda row: str(row["txn_id"]))
     escalations.sort(key=lambda row: str(row["merchant"]))
     escalations.sort(key=lambda row: _priority_rank(row["priority"]), reverse=True)
+    escalations.sort(key=lambda row: row["lineage_pressure_score"], reverse=True)
     escalations.sort(key=lambda row: row["posted_ms"], reverse=True)
+
+    total_replay_depth = sum(lineage[str(event["txn_id"])]["replay_depth"] for event in canonical)
+    max_lineage_pressure_score = max(
+        (row["lineage_pressure_score"] for row in escalations), default=0
+    )
 
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -181,8 +213,18 @@ def export_report(events: list[dict], output_dir: Path) -> None:
         ).hexdigest(),
         "escalation_checksum": hashlib.sha256(
             "\n".join(
-                f"{row['txn_id']}|{row['posted_ms']}|{row['priority']}|{row['merchant']}|{row['note']}"
+                f"{row['txn_id']}|{row['posted_ms']}|{row['priority']}|{row['merchant']}|"
+                f"{row['note']}|{row['replay_depth']}|{row['lineage_pressure_score']}"
                 for row in escalations
+            ).encode("utf-8")
+        ).hexdigest(),
+        "max_lineage_pressure_score": max_lineage_pressure_score,
+        "total_replay_depth": total_replay_depth,
+        "replay_lineage_checksum": hashlib.sha256(
+            "\n".join(
+                f"{event['txn_id']}|{lineage[str(event['txn_id'])]['replay_depth']}|"
+                f"{lineage[str(event['txn_id'])]['replay_span_ms']}"
+                for event in canonical
             ).encode("utf-8")
         ).hexdigest(),
     }

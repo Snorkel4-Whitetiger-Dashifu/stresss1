@@ -8,6 +8,15 @@ RUN apt-get update \
         asciinema \
     && rm -rf /var/lib/apt/lists/*
 
+# Test-only dependencies are installed at image build time (pinned, no network at verifier runtime).
+RUN python3 -m pip install --no-cache-dir \
+    iniconfig==2.3.0 \
+    packaging==26.2 \
+    pluggy==1.6.0 \
+    Pygments==2.20.0 \
+    pytest==8.4.1 \
+    pytest-json-ctrf==0.3.5
+
 WORKDIR /app
 
 COPY app/ /app/

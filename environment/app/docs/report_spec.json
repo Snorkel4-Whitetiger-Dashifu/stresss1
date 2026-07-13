@@ -1,6 +1,6 @@
 {
   "title": "Settlement Rollup — Diagnosis & Report Spec",
-  "version": "3.5",
+  "version": "3.6",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -105,13 +105,17 @@
         "escalated_count",
         "waived_excluded_count",
         "canonical_fingerprint",
-        "escalation_checksum"
+        "escalation_checksum",
+        "max_lineage_pressure_score",
+        "total_replay_depth",
+        "replay_lineage_checksum"
       ]
     },
     "output_paths": {
       "summary_json": "<output-dir>/summary.json",
       "flagged_jsonl": "<output-dir>/flagged.jsonl",
-      "service_matrix_json": "<output-dir>/service_matrix.json"
+      "service_matrix_json": "<output-dir>/service_matrix.json",
+      "notes": "Use these exact key names in repaired diagnosis.json output_paths. Do not substitute summary, flagged, or service_matrix."
     }
   },
   "canonicalization": {
@@ -123,7 +127,19 @@
     "waived_normalization": "treat boolean-like strings ('true','1','yes') as true",
     "canonical_order": "after dedupe, canonical rows are sorted by posted_ms ascending, then txn_id ascending",
     "total_records": "count canonical deduped records (waived rows remain in totals)",
-    "flagged_export": "include risk and critical only, exclude waived=true, sort by posted_ms descending then priority rank descending then merchant ascending then txn_id ascending"
+    "flagged_export": "include risk and critical only, exclude waived=true, sort by posted_ms descending then lineage_pressure_score descending then priority rank descending then merchant ascending then txn_id ascending"
+  },
+  "replay_lineage": {
+    "group_by": "txn_id on raw rows before dedupe (posted_ms already coerced per row)",
+    "replay_depth": "count(rows in group) - 1",
+    "replay_span_ms": "max(posted_ms) - min(posted_ms) within the group",
+    "lineage_pressure_score": "replay_depth * 12 + (replay_span_ms // 500)",
+    "flagged_fields": ["replay_depth", "lineage_pressure_score"],
+    "summary_aggregates": {
+      "max_lineage_pressure_score": "maximum lineage_pressure_score among flagged rows (0 when none flagged)",
+      "total_replay_depth": "sum of replay_depth across all canonical rows after dedupe",
+      "replay_lineage_checksum": "sha256 over canonical rows in canonical_order joined by newline where each row is txn_id|replay_depth|replay_span_ms"
+    }
   },
   "repair_audit": {
     "required_keys": [
@@ -183,9 +199,10 @@
   "outputs": {
     "summary_json": {
       "schema_version": "settlement-rollup-v2",
+      "schema_version_note": "Do not use top-level report_spec version (3.6) as summary schema_version.",
       "priority_counts_key_order": ["critical", "debug", "info", "risk"],
       "canonical_fingerprint": "sha256 over canonical rows in canonical_order joined by newline where each row is txn_id|posted_ms|priority|merchant|note|waived_int and waived_int is 1 or 0",
-      "escalation_checksum": "sha256 over final flagged rows in final output order joined by newline where each row is txn_id|posted_ms|priority|merchant|note"
+      "escalation_checksum": "sha256 over final flagged rows in final output order joined by newline where each row is txn_id|posted_ms|priority|merchant|note|replay_depth|lineage_pressure_score"
     },
     "service_matrix_json": {
       "description": "Flat map of merchant -> per-priority counts from canonical deduped records.",
@@ -202,8 +219,8 @@
       "priority_key_order": ["critical", "debug", "info", "risk"]
     },
     "flagged_jsonl": {
-      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note"],
-      "sort": "posted_ms descending, then priority rank descending, then merchant ascending, then txn_id ascending",
+      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note", "replay_depth", "lineage_pressure_score"],
+      "sort": "posted_ms descending, then lineage_pressure_score descending, then priority rank descending, then merchant ascending, then txn_id ascending",
       "priorities_included": ["risk", "critical"],
       "exclude_waived": true,
       "json_format": "compact (no space after colon; use json.dumps separators=(',', ':'))"

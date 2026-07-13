@@ -12,6 +12,9 @@ Lead analyst recommended switching to CSV export and disabling flagged.jsonl pag
 - Missing posted_at metadata in upstream feed (disproved on replay against bundled events.json)
 - Risk-priority rows intentionally excluded by design (disproved on replay against bundled events.json)
 
+## Replay Lineage Scoring (authoritative)
+Replay batches may contain multiple raw rows for the same `txn_id`. Before dedupe, compute `replay_depth = count(raw rows) - 1` and `replay_span_ms = max(posted_ms) - min(posted_ms)` per `txn_id` group (after posted_ms coercion). Attach lineage to canonical rows and compute `lineage_pressure_score = replay_depth * 12 + (replay_span_ms // 500)`. Flagged export must include `replay_depth` and `lineage_pressure_score`, and when `posted_ms` ties, higher lineage pressure ranks first. Summary must publish `max_lineage_pressure_score`, `total_replay_depth`, and `replay_lineage_checksum` per `/app/docs/report_spec.json`.
+
 ## Settlement Bridge Archive (noise, non-authoritative)
 Use this section as context only; acceptance is governed by `/app/data/events.json`, `/app/workflow/export_report.py`, and `/app/docs/report_spec.json`.
 
