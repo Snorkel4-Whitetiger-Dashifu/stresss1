@@ -541,13 +541,15 @@ def test_repaired_sources_do_not_reference_verifier_artifacts():
         source = source_path.read_text()
         for token in (
             "/tests",
+            "/solution",
             "expected_summary.json",
             "test_outputs.py",
         ):
             assert token not in source
 
 
-def test_repair_runtime_does_not_read_tests_tree():
+def test_repair_runtime_does_not_read_verifier_trees():
+    """Repair must not read from /tests or /solution at runtime."""
     with tempfile.TemporaryDirectory() as tmp:
         guard_path = Path(tmp) / "sitecustomize.py"
         guard_path.write_text(
@@ -560,7 +562,8 @@ def test_repair_runtime_does_not_read_tests_tree():
                     "_orig_read_bytes = Path.read_bytes",
                     "def _blocked(value):",
                     "    try:",
-                    "        return '/tests' in str(Path(value).resolve())",
+                    "        resolved = str(Path(value).resolve())",
+                    "        return '/tests' in resolved or '/solution' in resolved",
                     "    except Exception:",
                     "        return False",
                     "def _guarded_open(file, *args, **kwargs):",

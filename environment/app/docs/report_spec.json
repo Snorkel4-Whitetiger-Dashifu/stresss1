@@ -12,7 +12,10 @@
         },
         "must_include_all_allowed_ids": true,
         "must_not_include_repaired_keys": ["verified_summary", "output_paths"],
-        "input_events_path": "/app/data/events.json"
+        "input_events_path": "/app/data/events.json",
+        "unsupported_flags": {
+          "--input": "must exit non-zero; stderr must contain the argparse substring `unrecognized arguments: --input`"
+        }
       },
       "repair": {
         "usage": "python3 /app/log_audit.py repair --output-dir PATH",
@@ -48,6 +51,11 @@
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
         "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
+        "minimum_lengths": {
+          "dossier_quote": 30,
+          "pipeline_evidence": 10,
+          "repair_action": 10
+        },
         "term_matching": "case-sensitive substring match for all required_terms_by_issue entries",
         "required_terms_by_issue": {
           "wrong_posted_field": {
@@ -95,6 +103,7 @@
       "source_events_path": "/app/data/events.json"
     },
     "verified_summary": {
+      "completeness_contract": "verified_summary must be a full key-for-key copy of summary.json in repair mode; omissions or value mismatches are invalid",
       "required_fields": [
         "schema_version",
         "raw_record_count",
