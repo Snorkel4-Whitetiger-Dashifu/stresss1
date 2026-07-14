@@ -4,6 +4,8 @@ Mercury Payments Ops - escalation bridge archive (2026-Q1 through 2026-Q2).
 ## Executive Summary
 Settlement rollup export has been unstable since early 2026. Early triage blamed dashboard cache lag and suggested CSV fallback — those notes are archived below and may contradict later findings. For acceptance behavior, cross-check analyst notes embedded in bridge-window records against bundled events.json — early triage sections above are not authoritative.
 
+How the rollup is meant to behave — normalization, deduplication and its tie-breaks, waived handling, replay lineage scoring, canonical ordering and the flagged sort — was settled incrementally on the bridge, and those decisions live in the shift log below rather than in any single summary. The Q1 canonicalization proposals were revisited during the 2026-05 review and several were reversed; where an earlier proposal and a later decision disagree, the later decision governs. `/app/docs/report_spec.json` is the output contract only: it fixes schemas, field names, key ordering and encodings, not how the values are derived.
+
 ## Initial Triage Notes (2026-03 — superseded)
 Lead analyst recommended switching to CSV export and disabling flagged.jsonl paging until cache refresh SLO recovered. Replay against bundled events.json showed the pipeline miscounts even on cold cache. Do not implement CSV fallback for this incident.
 
@@ -11,9 +13,6 @@ Lead analyst recommended switching to CSV export and disabling flagged.jsonl pag
 - Dashboard read replica lag causing stale escalation counts (disproved: direct pipeline export shows same wrong counts)
 - Missing posted_at metadata in upstream feed (disproved on replay against bundled events.json)
 - Risk-priority rows intentionally excluded by design (disproved on replay against bundled events.json)
-
-## Replay Lineage Scoring (authoritative)
-Replay batches may contain multiple raw rows for the same `txn_id`. Before dedupe, compute `replay_depth = count(raw rows) - 1` and `replay_span_ms = max(posted_ms) - min(posted_ms)` per `txn_id` group (after posted_ms coercion). Attach lineage to canonical rows and compute `lineage_pressure_score = replay_depth * 12 + (replay_span_ms // 500)`. Flagged export must include `replay_depth` and `lineage_pressure_score`, and when `posted_ms` ties, higher lineage pressure ranks first. Summary must publish `max_lineage_pressure_score`, `total_replay_depth`, and `replay_lineage_checksum` per `/app/docs/report_spec.json`.
 
 ## Settlement Bridge Archive (noise, non-authoritative)
 Use this section as context only; acceptance is governed by `/app/data/events.json`, `/app/workflow/export_report.py`, and `/app/docs/report_spec.json`.
@@ -229,6 +228,7 @@ Shift lead noted routine settlement drift on zeta during bridge window 0037 (sou
 Historical CSV migration threads from 2025 for shift 0037 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer beta.
 
 ### Bridge shift 0038 — eta lane
+> **Canonicalization proposal (2026-03-04 - #SET-4210)** Priya: rows whose `posted_ms` will not parse as an integer should be dropped from the rollup entirely. *(Superseded — see the 2026-05 decision log.)*
 Shift lead noted routine settlement drift on eta during bridge window 0038 (east, wallet). Pager noise stayed within SLO; dashboard lag ticket SET-8838 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2026 for shift 0038 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer gamma.
 
@@ -361,6 +361,7 @@ Shift lead noted routine settlement drift on eta during bridge window 0070 (cent
 Historical CSV migration threads from 2025 for shift 0070 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
 
 ### Bridge shift 0071 — theta lane
+> **Canonicalization proposal (2026-03-06 - #SET-4219)** Priya: when a `txn_id` repeats, keep the first occurrence encountered and discard the rest. *(Superseded — see the 2026-05 decision log.)*
 Shift lead noted routine settlement drift on theta during bridge window 0071 (coastal, ach-settlement). Pager noise stayed within SLO; dashboard lag ticket SET-8871 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2026 for shift 0071 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer coral.
 
@@ -493,6 +494,7 @@ Shift lead noted routine settlement drift on theta during bridge window 0103 (so
 Historical CSV migration threads from 2025 for shift 0103 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer beta.
 
 ### Bridge shift 0104 — alpha lane
+> **Canonicalization proposal (2026-03-09 - #SET-4231)** Tomas: merchant labels are stable upstream; preserve their casing and do not fold acquirer aliases together. *(Superseded — see the 2026-05 decision log.)*
 Shift lead noted routine settlement drift on alpha during bridge window 0104 (east, wallet). Pager noise stayed within SLO; dashboard lag ticket SET-8904 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2026 for shift 0104 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer gamma.
 
@@ -645,6 +647,7 @@ Shift lead noted routine settlement drift on zeta during bridge window 0141 (wes
 Historical CSV migration threads from 2024 for shift 0141 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer mercury.
 
 ### Bridge shift 0142 — eta lane
+> **Canonicalization proposal (2026-03-12 - #SET-4248)** Tomas: only honour `waived` when it arrives as a real boolean; ignore string-valued waivers as upstream noise. *(Superseded — see the 2026-05 decision log.)*
 Shift lead noted routine settlement drift on eta during bridge window 0142 (central, batch-replay). Pager noise stayed within SLO; dashboard lag ticket SET-8942 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0142 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
 
@@ -1129,6 +1132,7 @@ Shift lead noted routine settlement drift on eta during bridge window 0262 (cent
 Historical CSV migration threads from 2025 for shift 0262 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
 
 ### Bridge shift 0263 — theta lane
+> **Canonicalization decision (2026-05-02 - #SET-4502)** Nadia: coerce `posted_ms` to int, running `str(value).strip()` before conversion. A value that still will not parse becomes `0` and the row is KEPT — it is not dropped. This supersedes #SET-4210.
 Shift lead noted routine settlement drift on theta during bridge window 0263 (coastal, ach-settlement). Pager noise stayed within SLO; dashboard lag ticket SET-9063 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2026 for shift 0263 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer coral.
 
@@ -1229,6 +1233,7 @@ Shift lead noted routine settlement drift on theta during bridge window 0287 (co
 Historical CSV migration threads from 2026 for shift 0287 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer coral.
 
 ### Bridge shift 0288 — alpha lane
+> **Canonicalization decision (2026-05-04 - #SET-4507)** Nadia: normalize `priority` by stripping surrounding whitespace and lowercasing, before any counting or escalation routing.
 Shift lead noted routine settlement drift on alpha during bridge window 0288 (north, card-present). Pager noise stayed within SLO; dashboard lag ticket SET-9088 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2024 for shift 0288 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer alpha.
 
@@ -1281,6 +1286,7 @@ Shift lead noted routine settlement drift on epsilon during bridge window 0300 (
 Historical CSV migration threads from 2024 for shift 0300 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer alpha.
 
 ### Bridge shift 0301 — zeta lane
+> **Canonicalization decision (2026-05-05 - #SET-4511)** Nadia: normalize `merchant` by stripping and lowercasing, then fold acquirer aliases: `alpha-pay` -> `alpha`, `beta-store` -> `beta`, `gamma_ops` -> `gamma`. This supersedes #SET-4231.
 Shift lead noted routine settlement drift on zeta during bridge window 0301 (south, card-not-present). Pager noise stayed within SLO; dashboard lag ticket SET-9101 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0301 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer beta.
 
@@ -1414,6 +1420,7 @@ Shift lead noted routine settlement drift on zeta during bridge window 0333 (wes
 Historical CSV migration threads from 2024 for shift 0333 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer mercury.
 
 ### Bridge shift 0334 — eta lane
+> **Canonicalization decision (2026-05-07 - #SET-4516)** Marta: normalize `note` by collapsing every run of whitespace down to a single space, before tie-breaking and before output.
 Shift lead noted routine settlement drift on eta during bridge window 0334 (central, batch-replay). Pager noise stayed within SLO; dashboard lag ticket SET-9134 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0334 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
 
@@ -1475,6 +1482,7 @@ Shift lead noted routine settlement drift on epsilon during bridge window 0348 (
 Historical CSV migration threads from 2024 for shift 0348 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer alpha.
 
 ### Bridge shift 0349 — zeta lane
+> **Canonicalization decision (2026-05-08 - #SET-4520)** Marta: treat the strings `true`, `1` and `yes` (case-insensitive, whitespace trimmed) as `waived = true`. This supersedes #SET-4248.
 Shift lead noted routine settlement drift on zeta during bridge window 0349 (south, card-not-present). Pager noise stayed within SLO; dashboard lag ticket SET-9149 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0349 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer beta.
 
@@ -1528,6 +1536,7 @@ Shift lead noted routine settlement drift on beta during bridge window 0361 (sou
 Historical CSV migration threads from 2025 for shift 0361 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer beta.
 
 ### Bridge shift 0362 — gamma lane
+> **Canonicalization decision (2026-05-09 - #SET-4524)** Nadia: dedupe by `txn_id`, keeping the row with the highest `posted_ms`. On a `posted_ms` tie, prefer the higher priority rank (critical > risk > info > debug); still tied, prefer the row that is NOT waived; still tied, take the lexicographically larger normalized `note`; still tied, the lexicographically larger normalized `merchant`. This supersedes #SET-4219.
 Shift lead noted routine settlement drift on gamma during bridge window 0362 (east, wallet). Pager noise stayed within SLO; dashboard lag ticket SET-9162 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2026 for shift 0362 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer gamma.
 
@@ -1588,6 +1597,7 @@ Shift lead noted routine settlement drift on alpha during bridge window 0376 (ce
 Historical CSV migration threads from 2025 for shift 0376 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
 
 ### Bridge shift 0377 — beta lane
+> **Canonicalization decision (2026-05-11 - #SET-4529)** Nadia: after dedupe, canonical rows are ordered by `posted_ms` ascending, then `txn_id` ascending. This canonical order is what the fingerprint and the replay lineage checksum are computed over.
 Shift lead noted routine settlement drift on beta during bridge window 0377 (coastal, ach-settlement). Pager noise stayed within SLO; dashboard lag ticket SET-9177 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2026 for shift 0377 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer coral.
 
@@ -1641,6 +1651,7 @@ Shift lead noted routine settlement drift on zeta during bridge window 0389 (coa
 Historical CSV migration threads from 2026 for shift 0389 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer coral.
 
 ### Bridge shift 0390 — eta lane
+> **Canonicalization decision (2026-05-12 - #SET-4533)** Marta: `total_records` counts the canonical deduped rows. Waived rows are still counted in that total — waiving suppresses escalation, it does not remove the record.
 Shift lead noted routine settlement drift on eta during bridge window 0390 (north, card-present). Pager noise stayed within SLO; dashboard lag ticket SET-9190 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2024 for shift 0390 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer alpha.
 
@@ -1702,6 +1713,7 @@ Shift lead noted routine settlement drift on epsilon during bridge window 0404 (
 Historical CSV migration threads from 2026 for shift 0404 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer gamma.
 
 ### Bridge shift 0405 — zeta lane
+> **Canonicalization decision (2026-05-13 - #SET-4538)** Marta: the flagged export carries risk and critical rows only, with waived rows excluded. Order it by `posted_ms` descending, then `lineage_pressure_score` descending, then priority rank descending, then `merchant` ascending, then `txn_id` ascending.
 Shift lead noted routine settlement drift on zeta during bridge window 0405 (west, bank-transfer). Pager noise stayed within SLO; dashboard lag ticket SET-9205 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2024 for shift 0405 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer mercury.
 
@@ -1767,6 +1779,7 @@ Historical CSV migration threads from 2024 for shift 0420 are archived and non-a
 > **Incident note (2026-04-14 - #SET-4410)** Marta: transactions with waived=true must be excluded from flagged export, even for critical priority.
 
 ### Bridge shift 0421 — zeta lane
+> **Canonicalization decision (2026-05-15 - #SET-4544)** Nadia: replay batches can carry several raw rows per `txn_id`. Before dedupe, group the raw rows by `txn_id` (posted_ms already coerced) and compute `replay_depth = count(rows) - 1` and `replay_span_ms = max(posted_ms) - min(posted_ms)` for the group. Score it `lineage_pressure_score = replay_depth * 12 + (replay_span_ms // 500)`. Flagged rows must carry `replay_depth` and `lineage_pressure_score`; the summary must publish `max_lineage_pressure_score`, `total_replay_depth` and `replay_lineage_checksum`.
 Shift lead noted routine settlement drift on zeta during bridge window 0421 (south, card-not-present). Pager noise stayed within SLO; dashboard lag ticket SET-9221 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0421 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer beta.
 

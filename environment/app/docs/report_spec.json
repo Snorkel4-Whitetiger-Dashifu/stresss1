@@ -1,5 +1,5 @@
 {
-  "title": "Settlement Rollup — Diagnosis & Report Spec",
+  "title": "Settlement Rollup \u2014 Diagnosis & Report Spec",
   "version": "3.6",
   "cli": {
     "path": "/app/log_audit.py",
@@ -11,7 +11,10 @@
           "report": "/app/output/diagnosis.json"
         },
         "must_include_all_allowed_ids": true,
-        "must_not_include_repaired_keys": ["verified_summary", "output_paths"],
+        "must_not_include_repaired_keys": [
+          "verified_summary",
+          "output_paths"
+        ],
         "input_events_path": "/app/data/events.json",
         "unsupported_flags": {
           "--input": "must exit non-zero; stderr must contain the argparse substring `unrecognized arguments: --input`"
@@ -26,7 +29,11 @@
     }
   },
   "diagnosis_report": {
-    "required_keys_diagnosed": ["pipeline_status", "issues_found", "input_stats"],
+    "required_keys_diagnosed": [
+      "pipeline_status",
+      "issues_found",
+      "input_stats"
+    ],
     "required_keys_repaired": [
       "pipeline_status",
       "issues_found",
@@ -37,7 +44,13 @@
     "pipeline_status_diagnosed": "diagnosed",
     "pipeline_status_repaired": "repaired",
     "issues_found_item": {
-      "required_fields": ["id", "severity", "description", "resolution", "evidence"],
+      "required_fields": [
+        "id",
+        "severity",
+        "description",
+        "resolution",
+        "evidence"
+      ],
       "allowed_ids": [
         "wrong_posted_field",
         "priority_filter",
@@ -47,7 +60,11 @@
         "waived_filter"
       ],
       "evidence": {
-        "required_fields": ["dossier_quote", "pipeline_evidence", "repair_action"],
+        "required_fields": [
+          "dossier_quote",
+          "pipeline_evidence",
+          "repair_action"
+        ],
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
         "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
@@ -59,47 +76,94 @@
         "term_matching": "case-sensitive substring match for all required_terms_by_issue entries",
         "required_terms_by_issue": {
           "wrong_posted_field": {
-            "dossier_quote": ["posted_at", "posted_ms"],
-            "pipeline_evidence": ["event[\"posted_at\"]"],
-            "repair_action": ["posted_ms"]
+            "dossier_quote": [
+              "posted_at",
+              "posted_ms"
+            ],
+            "pipeline_evidence": [
+              "event[\"posted_at\"]"
+            ],
+            "repair_action": [
+              "posted_ms"
+            ]
           },
           "priority_filter": {
-            "dossier_quote": ["risk", "critical"],
-            "pipeline_evidence": ["priority == \"critical\""],
-            "repair_action": ["risk"]
+            "dossier_quote": [
+              "risk",
+              "critical"
+            ],
+            "pipeline_evidence": [
+              "priority == \"critical\""
+            ],
+            "repair_action": [
+              "risk"
+            ]
           },
           "recency_order": {
-            "dossier_quote": ["ascending", "descending"],
-            "pipeline_evidence": ["sort", "posted_ms"],
-            "repair_action": ["reverse=True"]
+            "dossier_quote": [
+              "ascending",
+              "descending"
+            ],
+            "pipeline_evidence": [
+              "sort",
+              "posted_ms"
+            ],
+            "repair_action": [
+              "reverse=True"
+            ]
           },
           "priority_normalization": {
-            "dossier_quote": ["RISK", "lowercase"],
-            "pipeline_evidence": ["priority"],
-            "repair_action": [".lower("]
+            "dossier_quote": [
+              "RISK",
+              "lowercase"
+            ],
+            "pipeline_evidence": [
+              "priority"
+            ],
+            "repair_action": [
+              ".lower("
+            ]
           },
           "dedupe_transaction": {
-            "dossier_quote": ["duplicate", "posted_ms"],
-            "pipeline_evidence": ["for event in events"],
-            "repair_action": ["dedupe"]
+            "dossier_quote": [
+              "duplicate",
+              "posted_ms"
+            ],
+            "pipeline_evidence": [
+              "for event in events"
+            ],
+            "repair_action": [
+              "dedupe"
+            ]
           },
           "waived_filter": {
-            "dossier_quote": ["waived", "excluded"],
-            "pipeline_evidence": ["escalations.append"],
-            "repair_action": ["waived"]
+            "dossier_quote": [
+              "waived",
+              "excluded"
+            ],
+            "pipeline_evidence": [
+              "escalations.append"
+            ],
+            "repair_action": [
+              "waived"
+            ]
           }
         }
       }
     },
     "input_stats": {
-      "required_fields": ["record_count", "unique_txn_ids", "merchants"],
+      "required_fields": [
+        "record_count",
+        "unique_txn_ids",
+        "merchants"
+      ],
       "exact_schema": {
         "record_count": "integer count of raw rows from /app/data/events.json",
         "unique_txn_ids": "integer count of distinct str(txn_id) values in the raw rows",
         "merchants": "array of distinct canonical merchant strings from raw rows, sorted ascending"
       },
       "merchants_sort": "ascending alphabetical",
-      "merchants_normalization": "apply canonicalization.merchant_normalization, including trim/lowercase and aliases alpha-pay->alpha, beta-store->beta, gamma_ops->gamma, before deduplicating and sorting input_stats.merchants",
+      "merchants_normalization": "apply the same merchant normalization the pipeline uses (as decided in the incident dossier) before deduplicating and sorting input_stats.merchants",
       "source_events_path": "/app/data/events.json"
     },
     "verified_summary": {
@@ -127,29 +191,6 @@
       "notes": "Use these exact key names in repaired diagnosis.json output_paths. Do not substitute summary, flagged, or service_matrix."
     }
   },
-  "canonicalization": {
-    "dedupe_by_txn_id": "collapse duplicate txn_id rows, keeping the row with the highest posted_ms; if posted_ms ties, choose higher priority rank (critical > risk > info > debug); if still tied, prefer waived=false over waived=true; if still tied, choose lexicographically larger normalized note, then lexicographically larger normalized merchant",
-    "posted_ms_normalization": "coerce posted_ms to int (trim string whitespace before int conversion; invalid values become 0)",
-    "note_normalization": "normalize notes by collapsing internal whitespace to single spaces before tie-breaks and output",
-    "priority_normalization": "strip surrounding whitespace then lowercase priority strings before counting and escalation",
-    "merchant_normalization": "strip surrounding whitespace then lowercase merchant names before grouping; map aliases alpha-pay->alpha, beta-store->beta, gamma_ops->gamma",
-    "waived_normalization": "treat boolean-like strings ('true','1','yes') as true",
-    "canonical_order": "after dedupe, canonical rows are sorted by posted_ms ascending, then txn_id ascending",
-    "total_records": "count canonical deduped records (waived rows remain in totals)",
-    "flagged_export": "include risk and critical only, exclude waived=true, sort by posted_ms descending then lineage_pressure_score descending then priority rank descending then merchant ascending then txn_id ascending"
-  },
-  "replay_lineage": {
-    "group_by": "txn_id on raw rows before dedupe (posted_ms already coerced per row)",
-    "replay_depth": "count(rows in group) - 1",
-    "replay_span_ms": "max(posted_ms) - min(posted_ms) within the group",
-    "lineage_pressure_score": "replay_depth * 12 + (replay_span_ms // 500)",
-    "flagged_fields": ["replay_depth", "lineage_pressure_score"],
-    "summary_aggregates": {
-      "max_lineage_pressure_score": "maximum lineage_pressure_score among flagged rows (0 when none flagged)",
-      "total_replay_depth": "sum of replay_depth across all canonical rows after dedupe",
-      "replay_lineage_checksum": "sha256 over canonical rows in canonical_order joined by newline where each row is txn_id|replay_depth|replay_span_ms"
-    }
-  },
   "repair_audit": {
     "required_keys": [
       "patched_workflow",
@@ -174,14 +215,20 @@
       "description": "Map each forbidden_executable_tokens entry to a boolean (true when absent from patched executable code, excluding comments and docstrings)."
     },
     "pre_repair": {
-      "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
+      "required_fields": [
+        "pipeline_source_sha256",
+        "pipeline_tokens_present"
+      ],
       "capture_order": "before any write to export_report.py",
       "pipeline_tokens_present_schema": {
         "description": "Map each forbidden_executable_tokens entry to a boolean (true when present in frozen broken snapshot before repair)."
       }
     },
     "post_repair": {
-      "required_fields": ["escalated_count", "rerun_escalated_count"]
+      "required_fields": [
+        "escalated_count",
+        "rerun_escalated_count"
+      ]
     }
   },
   "workflow_repair": {
@@ -200,8 +247,8 @@
       ".lower(",
       "reverse=True",
       ".strip(",
-        "\"yes\"",
-        "MERCHANT_ALIASES"
+      "\"yes\"",
+      "MERCHANT_ALIASES"
     ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
@@ -209,12 +256,18 @@
     "summary_json": {
       "schema_version": "settlement-rollup-v2",
       "schema_version_note": "Do not use top-level report_spec version (3.6) as summary schema_version.",
-      "priority_counts_key_order": ["critical", "debug", "info", "risk"],
-      "canonical_fingerprint": "sha256 over canonical rows in canonical_order joined by newline where each row is txn_id|posted_ms|priority|merchant|note|waived_int and waived_int is 1 or 0",
-      "escalation_checksum": "sha256 over final flagged rows in final output order joined by newline where each row is txn_id|posted_ms|priority|merchant|note|replay_depth|lineage_pressure_score"
+      "priority_counts_key_order": [
+        "critical",
+        "debug",
+        "info",
+        "risk"
+      ],
+      "canonical_fingerprint": "sha256 over canonical rows in canonical order (as decided in the dossier), joined by newline, where each row is encoded txn_id|posted_ms|priority|merchant|note|waived_int and waived_int is 1 or 0",
+      "escalation_checksum": "sha256 over the final flagged rows in their final output order, joined by newline, where each row is encoded txn_id|posted_ms|priority|merchant|note|replay_depth|lineage_pressure_score",
+      "replay_lineage_checksum": "sha256 over canonical rows in canonical order, joined by newline, where each row is encoded txn_id|replay_depth|replay_span_ms"
     },
     "service_matrix_json": {
-      "description": "Flat map of merchant -> per-priority counts from canonical deduped records.",
+      "description": "Flat map of merchant -> per-priority counts, computed from the canonical deduped records.",
       "shape": {
         "<merchant>": {
           "critical": 0,
@@ -225,18 +278,32 @@
       },
       "notes": "Top-level keys are merchant names only. Do not wrap counts in schema_version, merchants, or metadata objects.",
       "merchant_sort": "ascending alphabetical",
-      "priority_key_order": ["critical", "debug", "info", "risk"]
+      "priority_key_order": [
+        "critical",
+        "debug",
+        "info",
+        "risk"
+      ]
     },
     "flagged_jsonl": {
-      "required_fields": ["txn_id", "posted_ms", "priority", "merchant", "note", "replay_depth", "lineage_pressure_score"],
-      "sort": "posted_ms descending, then lineage_pressure_score descending, then priority rank descending, then merchant ascending, then txn_id ascending",
-      "priorities_included": ["risk", "critical"],
-      "exclude_waived": true,
+      "required_fields": [
+        "txn_id",
+        "posted_ms",
+        "priority",
+        "merchant",
+        "note",
+        "replay_depth",
+        "lineage_pressure_score"
+      ],
       "json_format": "compact (no space after colon; use json.dumps separators=(',', ':'))"
     }
   },
   "long_context": {
     "dossier_path": "/app/incident/export_dossier.md",
     "minimum_line_count": 500
+  },
+  "semantics_source": {
+    "notes": "This document is the output contract only: schemas, field names, key ordering, output paths and encodings. It does NOT define how values are derived.",
+    "authority": "Canonicalization, normalization, dedupe tie-breaks, waived handling, replay lineage scoring and sort orders are decided in the incident dossier at /app/incident/export_dossier.md. Where an early dossier thread conflicts with a later decision, the later decision wins."
   }
 }
