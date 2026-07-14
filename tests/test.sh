@@ -9,6 +9,10 @@ if [ "$PWD" = "/" ]; then
     exit 0
 fi
 
+# Verifier deps are pre-bundled as wheels; install offline (no network access).
+python3 -m pip install --no-cache-dir --no-index --no-deps \
+  --find-links /tests/wheels -r /tests/requirements-test.txt
+
 python3 -m pytest -o cache_dir=/tmp/pytest_cache \
   --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA
 rc=$?
