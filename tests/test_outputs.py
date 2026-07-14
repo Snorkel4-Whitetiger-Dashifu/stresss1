@@ -44,6 +44,78 @@ MERCHANT_ALIASES = {
 }
 
 
+GUARD_SRC = '''
+import builtins
+import os
+from pathlib import Path
+
+_allowed = {p for p in os.environ.get("VERIFIER_ALLOWED_READS", "").split(os.pathsep) if p}
+_blocked_roots = ("/tests", "/solution")
+
+_orig_open = builtins.open
+_orig_os_open = os.open
+_orig_read_text = Path.read_text
+_orig_read_bytes = Path.read_bytes
+
+
+def _is_blocked(value):
+    try:
+        resolved = str(Path(value).resolve())
+    except Exception:
+        return False
+    if resolved in _allowed:
+        return False
+    return any(resolved == root or resolved.startswith(root + "/") for root in _blocked_roots)
+
+
+def _guarded_open(file, *args, **kwargs):
+    if _is_blocked(file):
+        raise PermissionError("blocked verifier-tree read: %s" % (file,))
+    return _orig_open(file, *args, **kwargs)
+
+
+def _guarded_os_open(path, *args, **kwargs):
+    if _is_blocked(path):
+        raise PermissionError("blocked verifier-tree read: %s" % (path,))
+    return _orig_os_open(path, *args, **kwargs)
+
+
+def _guarded_read_text(self, *args, **kwargs):
+    if _is_blocked(self):
+        raise PermissionError("blocked verifier-tree read: %s" % (self,))
+    return _orig_read_text(self, *args, **kwargs)
+
+
+def _guarded_read_bytes(self, *args, **kwargs):
+    if _is_blocked(self):
+        raise PermissionError("blocked verifier-tree read: %s" % (self,))
+    return _orig_read_bytes(self, *args, **kwargs)
+
+
+builtins.open = _guarded_open
+os.open = _guarded_os_open
+Path.read_text = _guarded_read_text
+Path.read_bytes = _guarded_read_bytes
+'''
+
+
+def _guarded_env(tmp: str, allowed: tuple[Path, ...] = ()) -> dict[str, str]:
+    """Build a subprocess env that blocks /tests and /solution reads.
+
+    Anything in ``allowed`` stays readable, so a pipeline may still consume the
+    input file it was explicitly pointed at while remaining unable to rummage
+    through the rest of the verifier tree.
+    """
+    Path(tmp, "sitecustomize.py").write_text(GUARD_SRC)
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{tmp}{os.pathsep}{existing}" if existing else tmp
+    env["VERIFIER_ALLOWED_READS"] = os.pathsep.join(
+        str(Path(path).resolve()) for path in allowed
+    )
+    return env
+
+
 def _normalize_ws(text: str) -> str:
     return " ".join(text.split())
 
@@ -296,19 +368,21 @@ def _run_pipeline(
     output_dir: Path = OUTPUT_DIR,
 ) -> subprocess.CompletedProcess[str]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    return subprocess.run(
-        [
-            "python3",
-            str(pipeline),
-            "--input",
-            str(input_path),
-            "--output-dir",
-            str(output_dir),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        return subprocess.run(
+            [
+                "python3",
+                str(pipeline),
+                "--input",
+                str(input_path),
+                "--output-dir",
+                str(output_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=_guarded_env(tmp, allowed=(input_path,)),
+        )
 
 
 def _flagged_rows(path: Path = FLAGGED_PATH) -> list[dict]:
@@ -572,44 +646,8 @@ def test_repaired_sources_do_not_reference_verifier_artifacts():
 def test_repair_runtime_does_not_read_verifier_trees():
     """Repair must not read from /tests or /solution at runtime."""
     with tempfile.TemporaryDirectory() as tmp:
-        guard_path = Path(tmp) / "sitecustomize.py"
-        guard_path.write_text(
-            "\n".join(
-                [
-                    "import builtins",
-                    "from pathlib import Path",
-                    "_orig_open = builtins.open",
-                    "_orig_read_text = Path.read_text",
-                    "_orig_read_bytes = Path.read_bytes",
-                    "def _blocked(value):",
-                    "    try:",
-                    "        resolved = str(Path(value).resolve())",
-                    "        return '/tests' in resolved or '/solution' in resolved",
-                    "    except Exception:",
-                    "        return False",
-                    "def _guarded_open(file, *args, **kwargs):",
-                    "    if _blocked(file):",
-                    "        raise PermissionError(f'blocked verifier-tree read: {file}')",
-                    "    return _orig_open(file, *args, **kwargs)",
-                    "def _guarded_read_text(self, *args, **kwargs):",
-                    "    if _blocked(self):",
-                    "        raise PermissionError(f'blocked verifier-tree read: {self}')",
-                    "    return _orig_read_text(self, *args, **kwargs)",
-                    "def _guarded_read_bytes(self, *args, **kwargs):",
-                    "    if _blocked(self):",
-                    "        raise PermissionError(f'blocked verifier-tree read: {self}')",
-                    "    return _orig_read_bytes(self, *args, **kwargs)",
-                    "builtins.open = _guarded_open",
-                    "Path.read_text = _guarded_read_text",
-                    "Path.read_bytes = _guarded_read_bytes",
-                ]
-            )
-            + "\n"
-        )
         output_dir = Path(tmp) / "repair-output"
-        env = dict(os.environ)
-        existing = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = f"{tmp}:{existing}" if existing else tmp
+        env = _guarded_env(tmp)
         result = subprocess.run(
             [
                 "python3",
@@ -1145,3 +1183,17 @@ def test_replay_lineage_pressure_breaks_posted_ms_ties(tmp_path_factory):
     summary = json.loads((out_dir / "summary.json").read_text())
     assert summary["total_replay_depth"] == 2
     assert summary["max_lineage_pressure_score"] == flagged[0]["lineage_pressure_score"]
+
+
+def test_pipeline_read_guard_blocks_verifier_tree_access(tmp_path_factory):
+    """The pipeline read-guard bites: a pipeline reaching into /tests is denied."""
+    rogue = tmp_path_factory.mktemp("rogue") / "export_report.py"
+    rogue.write_text(
+        "from pathlib import Path\n"
+        "Path('/tests/test_outputs.py').read_text()\n"
+    )
+    result = _run_pipeline(
+        pipeline=rogue, output_dir=tmp_path_factory.mktemp("rogue_out")
+    )
+    assert result.returncode != 0
+    assert "blocked verifier-tree read" in result.stderr
