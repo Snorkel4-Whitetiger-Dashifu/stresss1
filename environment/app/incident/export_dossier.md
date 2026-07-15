@@ -1013,6 +1013,7 @@ Shift lead noted routine settlement drift on theta during bridge window 0231 (we
 Historical CSV migration threads from 2024 for shift 0231 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer mercury.
 
 ### Bridge shift 0232 — alpha lane
+> **Canonicalization decision (2026-04-23 - #SET-4330)** Priya: normalize `note` by stripping surrounding whitespace only; internal spacing is preserved as-is from the source payload. *(Revised — see the 2026-05 decision log.)*
 Shift lead noted routine settlement drift on alpha during bridge window 0232 (central, batch-replay). Pager noise stayed within SLO; dashboard lag ticket SET-9032 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0232 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
 
@@ -1425,7 +1426,7 @@ Shift lead noted routine settlement drift on zeta during bridge window 0333 (wes
 Historical CSV migration threads from 2024 for shift 0333 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer mercury.
 
 ### Bridge shift 0334 — eta lane
-> **Canonicalization decision (2026-05-07 - #SET-4516)** Marta: normalize `note` by collapsing every run of whitespace down to a single space, before tie-breaking and before output.
+> **Canonicalization decision (2026-05-07 - #SET-4516)** Marta: normalize `note` by collapsing every run of whitespace down to a single space, before tie-breaking and before output — internal spacing is normalized, not just trimmed, which revises the strip-only position in #SET-4330.
 Shift lead noted routine settlement drift on eta during bridge window 0334 (central, batch-replay). Pager noise stayed within SLO; dashboard lag ticket SET-9134 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0334 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
 

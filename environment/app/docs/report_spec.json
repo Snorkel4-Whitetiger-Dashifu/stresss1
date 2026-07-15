@@ -264,7 +264,23 @@
       ],
       "canonical_fingerprint": "sha256 over canonical rows in canonical order (as decided in the dossier), joined by newline, where each row is encoded txn_id|posted_ms|priority|merchant|note|waived_int and waived_int is 1 or 0",
       "escalation_checksum": "sha256 over the final flagged rows in their final output order, joined by newline, where each row is encoded txn_id|posted_ms|priority|merchant|note|replay_depth|lineage_pressure_score",
-      "replay_lineage_checksum": "sha256 over canonical rows in canonical order, joined by newline, where each row is encoded txn_id|replay_depth|replay_span_ms"
+      "replay_lineage_checksum": "sha256 over canonical rows in canonical order, joined by newline, where each row is encoded txn_id|replay_depth|replay_span_ms",
+      "required_fields": [
+        "schema_version",
+        "raw_record_count",
+        "unique_txn_ids",
+        "total_records",
+        "priority_counts",
+        "merchants",
+        "escalated_count",
+        "waived_excluded_count",
+        "canonical_fingerprint",
+        "escalation_checksum",
+        "max_lineage_pressure_score",
+        "total_replay_depth",
+        "replay_lineage_checksum"
+      ],
+      "required_fields_note": "summary.json carries exactly these keys; verified_summary in repaired diagnosis.json is a key-for-key copy of them. Field values are derived per the dossier's canonicalization decisions."
     },
     "service_matrix_json": {
       "description": "Flat map of merchant -> per-priority counts, computed from the canonical deduped records.",
