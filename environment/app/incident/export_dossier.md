@@ -866,6 +866,7 @@ Shift lead noted routine settlement drift on delta during bridge window 0195 (we
 Historical CSV migration threads from 2024 for shift 0195 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer mercury.
 
 ### Bridge shift 0196 — epsilon lane
+> **Canonicalization decision (2026-04-11 - #SET-4319)** Priya: honour `waived` only when it arrives as a real JSON boolean; string values like `"yes"` or `"true"` are upstream noise and are treated as not waived. *(Revised — see the 2026-05 decision log.)*
 > **Canonicalization decision (2026-04-11 - #SET-4318)** Priya: the acquirer alias fold covers `alpha-pay` -> `alpha` only; other acquirer labels pass through unchanged. *(Revised — see the 2026-05 decision log.)*
 Shift lead noted routine settlement drift on epsilon during bridge window 0196 (central, batch-replay). Pager noise stayed within SLO; dashboard lag ticket SET-8996 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0196 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
@@ -1488,7 +1489,7 @@ Shift lead noted routine settlement drift on epsilon during bridge window 0348 (
 Historical CSV migration threads from 2024 for shift 0348 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer alpha.
 
 ### Bridge shift 0349 — zeta lane
-> **Canonicalization decision (2026-05-08 - #SET-4520)** Marta: treat the strings `true`, `1` and `yes` (case-insensitive, whitespace trimmed) as `waived = true`. This supersedes #SET-4248.
+> **Canonicalization decision (2026-05-08 - #SET-4520)** Marta: treat the strings `true`, `1` and `yes` (case-insensitive, whitespace trimmed) as `waived = true` — string waivers are honoured, which revises the boolean-only position in #SET-4319. This supersedes #SET-4248.
 Shift lead noted routine settlement drift on zeta during bridge window 0349 (south, card-not-present). Pager noise stayed within SLO; dashboard lag ticket SET-9149 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0349 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer beta.
 
