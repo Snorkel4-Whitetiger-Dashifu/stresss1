@@ -26,7 +26,7 @@ DOSSIER_PATH = Path("/app/incident/export_dossier.md")
 INPUT_PATH = Path("/app/data/events.json")
 REPORT_SPEC_PATH = Path("/app/docs/report_spec.json")
 ALT_INPUT = Path("/tests/fixtures/alt_events.json")
-BROKEN_PIPELINE_SHA256 = "98c75e8fcb037ee3e68349973a60f44f0068dba45de632ffe4089f8c2f76ca3d"
+BROKEN_PIPELINE_SHA256 = "08ec3ae69e2aad5b5fe63e582fc2f2473dca126381efb6c8c30183a0c4f25156"
 SPEC_DATA = json.loads(REPORT_SPEC_PATH.read_text())
 ISSUE_EVIDENCE_TERMS = SPEC_DATA["diagnosis_report"]["issues_found_item"]["evidence"][
     "required_terms_by_issue"

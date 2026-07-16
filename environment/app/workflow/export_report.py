@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Broken settlement rollup workflow used for repair task."""
+"""Compile settlement escalation rollup outputs for the responder handoff."""
 
 from __future__ import annotations
 
