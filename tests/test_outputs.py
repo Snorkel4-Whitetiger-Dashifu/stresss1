@@ -41,6 +41,7 @@ MERCHANT_ALIASES = {
     "alpha-pay": "alpha",
     "beta-store": "beta",
     "gamma_ops": "gamma",
+    "delta-pay": "delta",
 }
 
 
@@ -1225,6 +1226,37 @@ def test_lineage_pressure_span_contribution_is_capped(tmp_path_factory):
     assert scores["w2"] == 0
     summary = json.loads((out_dir / "summary.json").read_text())
     assert summary["max_lineage_pressure_score"] == 52
+
+
+def test_merchant_alias_fold_covers_the_delta_acquirer(tmp_path_factory):
+    """The acquirer fold table folds delta-pay, not only the original three aliases."""
+    events = [
+        {
+            "txn_id": "d1",
+            "posted_ms": 1000,
+            "priority": "critical",
+            "merchant": "delta-pay",
+            "note": "onboarded acquirer",
+            "waived": False,
+        },
+        {
+            "txn_id": "d2",
+            "posted_ms": 900,
+            "priority": "critical",
+            "merchant": "delta",
+            "note": "existing label",
+            "waived": False,
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("delta_alias") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("delta_alias_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    # delta-pay folds to delta, so both rows settle under the one merchant; a
+    # pipeline built only from the three-alias table leaves them split.
+    assert {row["merchant"] for row in flagged} == {"delta"}
 
 
 def test_pipeline_read_guard_blocks_verifier_tree_access(tmp_path_factory):

@@ -1879,6 +1879,7 @@ Historical CSV migration threads from 2025 for shift 0442 are archived and non-a
 ### Bridge shift 0443 — delta lane
 Shift lead noted routine settlement drift on delta during bridge window 0443 (coastal, ach-settlement). Pager noise stayed within SLO; dashboard lag ticket SET-9243 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2026 for shift 0443 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer coral.
+> **Canonicalization decision (2026-05-17 - #SET-4557)** Priya: delta's acquirer onboarding closed on this lane, and it settles under its own label, so the fold table takes a fourth entry: `delta-pay` -> `delta`. The four folds — `alpha-pay` -> `alpha`, `beta-store` -> `beta`, `gamma_ops` -> `gamma`, `delta-pay` -> `delta` — are final and revise the three-alias table in #SET-4511. The strip-and-lowercase step recorded there is unchanged and still runs before the fold.
 
 ### Bridge shift 0444 — epsilon lane
 Shift lead noted routine settlement drift on epsilon during bridge window 0444 (north, card-present). Pager noise stayed within SLO; dashboard lag ticket SET-9244 was attributed to stale cache refresh, not the rollup pipeline.

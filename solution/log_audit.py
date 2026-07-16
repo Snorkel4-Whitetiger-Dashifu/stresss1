@@ -20,6 +20,7 @@ MERCHANT_ALIASES = {
     "alpha-pay": "alpha",
     "beta-store": "beta",
     "gamma_ops": "gamma",
+    "delta-pay": "delta",
 }
 
 ISSUE_META = {
