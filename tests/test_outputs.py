@@ -209,7 +209,7 @@ def _replay_lineage(events: list[dict]) -> dict[str, dict[str, int]]:
 
 
 def _lineage_pressure_score(replay_depth: int, replay_span_ms: int) -> int:
-    return replay_depth * 12 + (replay_span_ms // 500)
+    return replay_depth * 12 + min(replay_span_ms // 500, 40)
 
 
 def _canonicalize_events(events: list[dict]) -> list[dict]:
@@ -1183,6 +1183,48 @@ def test_replay_lineage_pressure_breaks_posted_ms_ties(tmp_path_factory):
     summary = json.loads((out_dir / "summary.json").read_text())
     assert summary["total_replay_depth"] == 2
     assert summary["max_lineage_pressure_score"] == flagged[0]["lineage_pressure_score"]
+
+
+def test_lineage_pressure_span_contribution_is_capped(tmp_path_factory):
+    """The span term of lineage pressure is capped at 40 points per the final dossier ruling."""
+    events = [
+        {
+            "txn_id": "w1",
+            "posted_ms": 1000,
+            "priority": "critical",
+            "merchant": "alpha",
+            "note": "replay-open",
+            "waived": False,
+        },
+        {
+            "txn_id": "w1",
+            "posted_ms": 31000,
+            "priority": "critical",
+            "merchant": "alpha",
+            "note": "replay-close",
+            "waived": False,
+        },
+        {
+            "txn_id": "w2",
+            "posted_ms": 31000,
+            "priority": "critical",
+            "merchant": "beta",
+            "note": "single",
+            "waived": False,
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("span_cap") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("span_cap_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    scores = {row["txn_id"]: row["lineage_pressure_score"] for row in flagged}
+    # span 30000ms -> 30000 // 500 = 60, capped at 40; depth 1 adds 12.
+    assert scores["w1"] == 52
+    assert scores["w2"] == 0
+    summary = json.loads((out_dir / "summary.json").read_text())
+    assert summary["max_lineage_pressure_score"] == 52
 
 
 def test_pipeline_read_guard_blocks_verifier_tree_access(tmp_path_factory):

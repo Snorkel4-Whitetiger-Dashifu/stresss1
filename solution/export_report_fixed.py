@@ -82,7 +82,7 @@ def _replay_lineage(events: list[dict]) -> dict[str, dict[str, int]]:
 
 
 def _lineage_pressure_score(replay_depth: int, replay_span_ms: int) -> int:
-    return replay_depth * 12 + (replay_span_ms // 500)
+    return replay_depth * 12 + min(replay_span_ms // 500, 40)
 
 
 def canonicalize_events(events: list[dict]) -> list[dict]:

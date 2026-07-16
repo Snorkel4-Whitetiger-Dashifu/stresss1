@@ -1874,6 +1874,7 @@ Historical CSV migration threads from 2024 for shift 0441 are archived and non-a
 ### Bridge shift 0442 — gamma lane
 Shift lead noted routine settlement drift on gamma during bridge window 0442 (central, batch-replay). Pager noise stayed within SLO; dashboard lag ticket SET-9242 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2025 for shift 0442 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer atlas.
+> **Canonicalization decision (2026-05-16 - #SET-4551)** Marta: follow-up from the 0442 batch-replay review — wide replay batches were letting `replay_span_ms` dominate the score, so the span term is capped: `lineage_pressure_score = replay_depth * 12 + min(replay_span_ms // 500, 40)`. The 40-point span ceiling revises the uncapped form in #SET-4544; the 12/500 scaling itself is unchanged.
 
 ### Bridge shift 0443 — delta lane
 Shift lead noted routine settlement drift on delta during bridge window 0443 (coastal, ach-settlement). Pager noise stayed within SLO; dashboard lag ticket SET-9243 was attributed to stale cache refresh, not the rollup pipeline.
