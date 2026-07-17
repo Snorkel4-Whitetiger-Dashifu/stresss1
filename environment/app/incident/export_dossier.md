@@ -1884,6 +1884,7 @@ Historical CSV migration threads from 2026 for shift 0443 are archived and non-a
 ### Bridge shift 0444 — epsilon lane
 Shift lead noted routine settlement drift on epsilon during bridge window 0444 (north, card-present). Pager noise stayed within SLO; dashboard lag ticket SET-9244 was attributed to stale cache refresh, not the rollup pipeline.
 Historical CSV migration threads from 2024 for shift 0444 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts from acquirer alpha.
+> **Canonicalization decision (2026-05-17 - #SET-4560)** Nadia: the escalation review concluded that replay depth was underweighted relative to a single-batch incident, so the per-depth weight in the lineage score is raised from 12 to 15: `lineage_pressure_score = replay_depth * 15 + min(replay_span_ms // 500, 40)`. The 15-per-depth scaling is final and revises the 12 in #SET-4544; the 40-point span ceiling added in #SET-4551 is unchanged.
 
 ### Bridge shift 0445 — zeta lane
 Shift lead noted routine settlement drift on zeta during bridge window 0445 (south, card-not-present). Pager noise stayed within SLO; dashboard lag ticket SET-9245 was attributed to stale cache refresh, not the rollup pipeline.

@@ -210,7 +210,7 @@ def _replay_lineage(events: list[dict]) -> dict[str, dict[str, int]]:
 
 
 def _lineage_pressure_score(replay_depth: int, replay_span_ms: int) -> int:
-    return replay_depth * 12 + min(replay_span_ms // 500, 40)
+    return replay_depth * 15 + min(replay_span_ms // 500, 40)
 
 
 def _canonicalize_events(events: list[dict]) -> list[dict]:
@@ -1221,11 +1221,11 @@ def test_lineage_pressure_span_contribution_is_capped(tmp_path_factory):
     assert result.returncode == 0, result.stderr
     flagged = _flagged_rows(out_dir / "flagged.jsonl")
     scores = {row["txn_id"]: row["lineage_pressure_score"] for row in flagged}
-    # span 30000ms -> 30000 // 500 = 60, capped at 40; depth 1 adds 12.
-    assert scores["w1"] == 52
+    # span 30000ms -> 30000 // 500 = 60, capped at 40; depth 1 adds 15.
+    assert scores["w1"] == 55
     assert scores["w2"] == 0
     summary = json.loads((out_dir / "summary.json").read_text())
-    assert summary["max_lineage_pressure_score"] == 52
+    assert summary["max_lineage_pressure_score"] == 55
 
 
 def test_merchant_alias_fold_covers_the_delta_acquirer(tmp_path_factory):
